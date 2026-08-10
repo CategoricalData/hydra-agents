@@ -1,0 +1,17 @@
+# Runtime output and rotated logs — never commit these (see #583 Step 0.4:
+# ~/watchdog carried ~350 MB of health.log/heartbeat.log that must stay out).
+logs/
+*.log
+*.log.[0-9]*
+
+# Archived / rotated runtime state.
+archive/
+deprecated/
+
+# Machine-local Claude settings and caches.
+.claude/settings.local.json
+.cache/
+
+# Editor / OS noise.
+*.swp
+.DS_Store
