@@ -1,0 +1,21 @@
+[Unit]
+Description=Watchdog: 5s script-side heartbeat to ~/watchdog/logs/heartbeat.log
+After=multi-user.target
+
+[Service]
+Type=simple
+User=josh
+Group=josh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/home/josh/watchdog/bin/heartbeat.sh
+Restart=always
+RestartSec=2
+
+# Deliberately NO [Install] section.
+# After a "crash" we want a human/Claude to analyze the pre-crash heartbeat log
+# first, then manually:
+#   sudo systemctl start instance-heartbeat-script.service
+#   sudo systemctl start instance-health-monitor.timer
+# See ~/watchdog/README.md.

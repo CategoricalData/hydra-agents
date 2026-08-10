@@ -1,0 +1,12 @@
+[Unit]
+Description=Watchdog: snapshot system health to ~/watchdog/logs/health.log
+After=multi-user.target
+
+[Service]
+Type=oneshot
+User=josh
+Group=josh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/home/josh/watchdog/bin/health-monitor.sh
