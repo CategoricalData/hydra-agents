@@ -1,0 +1,14 @@
+[Unit]
+Description=Watchdog: run health-monitor every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=false
+Unit=instance-health-monitor.service
+
+# Deliberately NO [Install] section — does not auto-start after a reboot.
+# Start manually post-analysis with:
+#   sudo systemctl start instance-health-monitor.timer
+# See ~/watchdog/README.md.
