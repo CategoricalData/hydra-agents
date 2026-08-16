@@ -45,13 +45,23 @@ if [ -f "$INTERVAL_STAMP" ]; then
 fi
 
 # --- resolve the staging worktree by glob (name starts with "staging") ---
+# Only accept a candidate whose inbox actually EXISTS and is WRITABLE — a stale or
+# unwritable match must not be chosen, since delivering there would silently fail.
+# (The prior form took the first staging*/ dir even without a usable inbox, which
+# could send beats to a wrong/unwritable path. See the fleet-monitor issue.)
 staging_dir=""
+staging_matches=0
 for d in "$WT_ROOT"/staging*/; do
   [ -d "$d" ] || continue
-  if [ -d "${d}claude-hydra-messages/inbox" ]; then staging_dir="$d"; break; fi
-  [ -z "$staging_dir" ] && staging_dir="$d"
+  staging_matches=$((staging_matches + 1))
+  if [ -d "${d}claude-hydra-messages/inbox" ] && [ -w "${d}claude-hydra-messages/inbox" ]; then
+    staging_dir="$d"; break
+  fi
 done
-[ -z "$staging_dir" ] && exit 0   # no staging worktree here; nothing to do
+[ -z "$staging_dir" ] && exit 0   # no staging worktree with a writable inbox; nothing to do
+if [ "$staging_matches" -gt 1 ]; then
+  echo "heartbeat-staging: note — $staging_matches staging*/ worktrees; using $staging_dir" >&2
+fi
 staging_inbox="${staging_dir}claude-hydra-messages/inbox"
 staging_name=$(basename "$staging_dir")
 
@@ -85,13 +95,26 @@ No reply channel — nothing here reads a response.
 EOF
 )
 
-# --- deliver: overwrite the single liveness note in staging's inbox ---
-mkdir -p "$staging_inbox"
-printf '%s\n' "$msg_body" > "$staging_inbox/$BEAT_FNAME" 2>/dev/null
-
-# --- record the send time only after a successful write ---
-if [ -s "$staging_inbox/$BEAT_FNAME" ]; then
+# --- deliver: atomically overwrite the single liveness note in staging's inbox ---
+# Write to a temp file in the same dir, then rename over the target. A rename on
+# the same filesystem is atomic: staging never sees a half-written note, and — the
+# bug this fixes — the interval stamp advances ONLY on a verified fresh write.
+# The prior form suppressed write errors (2>/dev/null) and gated the stamp on
+# `-s` (is SOME file non-empty), so if the write silently failed the OLD file
+# still passed and the stamp advanced anyway, freezing liveness while claiming to
+# emit. See the hydra-agents fleet-monitor issue, Symptom 2.
+if ! mkdir -p "$staging_inbox"; then
+  echo "heartbeat-staging: cannot create inbox dir $staging_inbox" >&2
+  exit 1   # do NOT stamp — nothing was delivered
+fi
+tmp="$staging_inbox/.$BEAT_FNAME.tmp.$$"
+if printf '%s\n' "$msg_body" > "$tmp" && mv -f "$tmp" "$staging_inbox/$BEAT_FNAME"; then
+  # write + atomic rename both succeeded → record the send time
   printf '%s\n' "$now_epoch" > "$INTERVAL_STAMP"
+else
+  rm -f "$tmp" 2>/dev/null
+  echo "heartbeat-staging: liveness write to $staging_inbox failed — stamp NOT advanced" >&2
+  exit 1   # leave the stamp stale so the next tick retries immediately
 fi
 
 exit 0
