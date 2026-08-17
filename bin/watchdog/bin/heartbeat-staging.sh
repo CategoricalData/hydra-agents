@@ -49,13 +49,30 @@ fi
 # unwritable match must not be chosen, since delivering there would silently fail.
 # (The prior form took the first staging*/ dir even without a usable inbox, which
 # could send beats to a wrong/unwritable path. See the fleet-monitor issue.)
+#
+# PREFERRED TARGET: the glob can match several staging*/ worktrees (e.g. staging-gce
+# AND staging-fix). Alphabetical-first is NOT necessarily the LIVE coordinator —
+# delivering to the wrong one leaves the live coordinator's liveness note stale and
+# produces false STALE alerts (observed: beats went to staging-fix/ while staging-gce/
+# — the live coordinator — went stale ~35h). So honor an explicit config value for the
+# live staging worktree, and only fall back to the glob when it is unset/unusable.
+# WATCHDOG_STAGING_DIR is the machine-specific coordinator name (e.g. "staging-gce");
+# keeping it in config, not hardcoded, is the whole point of the #583 harness split.
 staging_dir=""
 staging_matches=0
+if [ -n "${WATCHDOG_STAGING_DIR:-}" ]; then
+  preferred="$WT_ROOT/${WATCHDOG_STAGING_DIR%/}/"
+  if [ -d "${preferred}claude-hydra-messages/inbox" ] && [ -w "${preferred}claude-hydra-messages/inbox" ]; then
+    staging_dir="$preferred"
+  else
+    echo "heartbeat-staging: WATCHDOG_STAGING_DIR=$WATCHDOG_STAGING_DIR has no writable inbox; falling back to glob" >&2
+  fi
+fi
 for d in "$WT_ROOT"/staging*/; do
   [ -d "$d" ] || continue
   staging_matches=$((staging_matches + 1))
-  if [ -d "${d}claude-hydra-messages/inbox" ] && [ -w "${d}claude-hydra-messages/inbox" ]; then
-    staging_dir="$d"; break
+  if [ -z "$staging_dir" ] && [ -d "${d}claude-hydra-messages/inbox" ] && [ -w "${d}claude-hydra-messages/inbox" ]; then
+    staging_dir="$d"
   fi
 done
 [ -z "$staging_dir" ] && exit 0   # no staging worktree with a writable inbox; nothing to do
