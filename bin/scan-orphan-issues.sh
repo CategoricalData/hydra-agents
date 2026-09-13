@@ -58,7 +58,7 @@ while IFS=$'\t' read -r num title labels; do
     if printf '%s' "$title" | grep -Eq "$RELEASE_RE"; then
         continue
     fi
-    if printf '%s' ",$labels," | grep -q ",$RELEASE_LABEL,"; then
+    if printf '%s' ",$labels," | grep -qF ",$RELEASE_LABEL,"; then
         continue
     fi
 

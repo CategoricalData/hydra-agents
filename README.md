@@ -11,8 +11,8 @@ project, which remains its first and reference consumer — but the framework is
 Hydra's language/toolchain, and while the current fleet runs on Claude Code, the
 model (issue tree, worktrees, inbox protocol, promotion ladder) is plain files and
 git state that any agent framework can drive. Genuinely Claude-specific pieces
-(hooks, `claude-remote`, the slash-command skills) are labelled as such and live
-in a `claude/` corner; everything else is neutral.
+(the hooks under `bin/claude-hooks/`, `claude-remote`) are labelled as such;
+everything else is neutral.
 
 This top-level README **is** the harness guide — the conventions and procedures an
 adopting project's agents follow. The [`docs/`](docs/) directory holds the
@@ -231,11 +231,13 @@ per-push prompt. See [`docs/branch-flow.md`](docs/branch-flow.md).)
 
 ```
 hydra-agents/
-├── README.md      ← this harness guide
-├── docs/          ← deep-dive references (see docs/index.md)
-├── bin/           ← harness + machine scripts (spawn, recovery, attention, watchdog)
-├── claude/        ← Claude-Code-specific bindings (skills, hooks), where present
-└── LICENSE        ← Apache-2.0
+├── README.md          ← this harness guide
+├── docs/              ← deep-dive references (see docs/index.md)
+├── bin/               ← harness + machine scripts (spawn, scan, recovery, term-style, watchdog/)
+│   ├── lib-config.sh      ← reads the consuming project's hydra-agents.json
+│   └── claude-hooks/      ← Claude-Code-specific hooks + template-settings.json
+├── config/examples/   ← hydra-agents.json + settings.allow.hydra.json reference files
+└── LICENSE            ← Apache-2.0
 ```
 
 ## License

@@ -106,16 +106,16 @@ Each iteration:
    (`git merge <feature-branch>` from the staging worktree). When the user directs,
    also pull a remote branch they name. Resolve any conflicts here,
    in the staging worktree.
-1a. **WIP-commit check on the pulled history.** Immediately after pulling,
-   scan the newly-arrived commits for the `WIP:` prefix
-   (`git log --oneline <prev-staging-tip>..staging | grep '^[0-9a-f]* WIP:'`).
-   `WIP:` marks unfinalized work that must **not** reach `origin/main` (see the
-   commit-workflow rules in the harness guide). Feature sessions routinely
-   leave `WIP:` commits, and a merge drags them in wholesale — this is the main
-   way the prefix leaks onto main. If any are found, **stop and propose a
-   remediation to the user before continuing the cycle** (see
-   [Handling pulled WIP commits](#handling-pulled-wip-commits)). Do not run the
-   validation pipeline or push past unresolved `WIP:` commits.
+   - **WIP-commit check on the pulled history.** Immediately after pulling,
+     scan the newly-arrived commits for the `WIP:` prefix
+     (`git log --oneline <prev-staging-tip>..staging | grep '^[0-9a-f]* WIP:'`).
+     `WIP:` marks unfinalized work that must **not** reach `origin/main` (see the
+     commit-workflow rules in the harness guide). Feature sessions routinely
+     leave `WIP:` commits, and a merge drags them in wholesale — this is the main
+     way the prefix leaks onto main. If any are found, **stop and propose a
+     remediation to the user before continuing the cycle** (see
+     [Handling pulled WIP commits](#handling-pulled-wip-commits)). Do not run the
+     validation pipeline or push past unresolved `WIP:` commits.
 2. **Run the validation pipeline** (Hydra: `/sync` → `/test all` → `/bootstrap`).
 3. **On failure in any pipeline step:** attempt a fix. If the correct fix is
    clear, apply it and re-run the failing step and everything after it (per the

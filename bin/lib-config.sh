@@ -60,18 +60,34 @@ ha_load_config() {
     fi
     HA_PROJECT_ROOT="$(cd "$(dirname "$HA_CONFIG_FILE")" && pwd)"
 
-    # Read a required string field; error if missing/null/empty.
+    # Fail loudly on malformed JSON, up front — otherwise a parse error would
+    # masquerade as a "missing required field" (from _req) or silently fall back
+    # to defaults for every optional field (from _opt).
+    if ! jq empty "$HA_CONFIG_FILE" 2>/dev/null; then
+        echo "error: hydra-agents.json is not valid JSON ($HA_CONFIG_FILE)." >&2
+        echo "       Run 'jq . $HA_CONFIG_FILE' to see the parse error." >&2
+        return 6
+    fi
+
+    # Read a required string field; error if missing/null/empty. `strings` guards
+    # against a non-string value (number/object) being accepted as a garbage value.
     local _v
     _req() {
-        _v="$(jq -re --arg k "$1" '.[$k] // empty' "$HA_CONFIG_FILE" 2>/dev/null || true)"
+        _v="$(jq -re --arg k "$1" '.[$k] | strings // empty' "$HA_CONFIG_FILE" 2>/dev/null || true)"
         if [ -z "$_v" ]; then
-            echo "error: hydra-agents.json is missing required field \"$1\" ($HA_CONFIG_FILE)." >&2
+            echo "error: hydra-agents.json is missing (or non-string/empty) required field \"$1\" ($HA_CONFIG_FILE)." >&2
             return 5
         fi
         printf '%s' "$_v"
     }
-    # Read an optional string field with a default.
-    _opt() { jq -re --arg k "$1" --arg d "$2" '.[$k] // $d' "$HA_CONFIG_FILE" 2>/dev/null || printf '%s' "$2"; }
+    # Read an optional string field with a default. Treats an ABSENT, null, or
+    # EMPTY-STRING value as "use the default" — jq's `//` alone only defaults on
+    # null/false, so an explicit "" would otherwise slip through as an empty value.
+    _opt() {
+        local _o
+        _o="$(jq -re --arg k "$1" '.[$k] | strings // empty' "$HA_CONFIG_FILE" 2>/dev/null || true)"
+        if [ -z "$_o" ]; then printf '%s' "$2"; else printf '%s' "$_o"; fi
+    }
 
     HA_ISSUE_URL_BASE="$(_req issueUrlBase)" || return 5
     HA_ISSUE_REPO="$(_req issueRepo)"        || return 5
@@ -79,8 +95,15 @@ ha_load_config() {
     HA_SPAWN_MODEL="$(_opt spawnModel opusplan)"
     HA_AGENTS_VERSION="$(_opt agentsVersion unpinned)"
 
-    # agentsDir is relative to the project root; resolve to absolute.
-    local _adir; _adir="$(_opt agentsDir ./agents)"
+    # Resolve the hydra-agents checkout. HYDRA_AGENTS_DIR (env) overrides for a
+    # nonstandard layout; otherwise agentsDir from the config, relative to the
+    # project root. Both resolve to an absolute path.
+    local _adir
+    if [ -n "${HYDRA_AGENTS_DIR:-}" ]; then
+        _adir="$HYDRA_AGENTS_DIR"
+    else
+        _adir="$(_opt agentsDir ./agents)"
+    fi
     case "$_adir" in
         /*) HA_AGENTS_DIR="$_adir" ;;
         *)  HA_AGENTS_DIR="$HA_PROJECT_ROOT/${_adir#./}" ;;
@@ -88,5 +111,6 @@ ha_load_config() {
 
     export HA_PROJECT_ROOT HA_CONFIG_FILE HA_AGENTS_DIR HA_AGENTS_VERSION \
            HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL
+    unset -f _req _opt   # don't leak these generic helper names into the caller's shell
     return 0
 }

@@ -40,13 +40,23 @@ now_epoch=$(date -u +%s)
 ts_iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 ts_file=$(date -u +'%Y-%m-%dT%H-%M-%SZ')   # colons→dashes for portable filenames
 
-# --- resolve the staging worktree by glob (name starts with "staging") ---
-# If several match, prefer one whose inbox already exists; else the first.
+# --- resolve the staging worktree (same discipline as heartbeat-staging.sh) ---
+# Honor an explicit WATCHDOG_STAGING_DIR for the live coordinator; else glob, and
+# only accept a candidate whose inbox EXISTS and is WRITABLE — never deliver the
+# urgent alert channel to a wrong/unwritable inbox (the class of bug fixed in the
+# heartbeat; the alert channel must be at least as robust).
 staging_dir=""
+if [ -n "${WATCHDOG_STAGING_DIR:-}" ]; then
+  preferred="$WT_ROOT/${WATCHDOG_STAGING_DIR%/}/"
+  if [ -d "${preferred}claude-hydra-messages/inbox" ] && [ -w "${preferred}claude-hydra-messages/inbox" ]; then
+    staging_dir="$preferred"
+  fi
+fi
 for d in "$WT_ROOT"/staging*/; do
   [ -d "$d" ] || continue
-  if [ -d "${d}claude-hydra-messages/inbox" ]; then staging_dir="$d"; break; fi
-  [ -z "$staging_dir" ] && staging_dir="$d"
+  if [ -z "$staging_dir" ] && [ -d "${d}claude-hydra-messages/inbox" ] && [ -w "${d}claude-hydra-messages/inbox" ]; then
+    staging_dir="$d"
+  fi
 done
 if [ -z "$staging_dir" ]; then
   # No staging worktree on this machine right now. Still record an attention

@@ -19,7 +19,9 @@ issue agent uses to run its children's lifecycle.
 ## Spawning an agent
 
 Spawn via
-`COORDINATOR=<coord-worktree> bin/spawn-issue-worktree.sh <issue-number> <slug>`.
+`COORDINATOR=<coord-worktree> PARENT=<parent-issue> bin/spawn-issue-worktree.sh <issue-number> <slug>`.
+(`PARENT` is required for every non-release type — the script hard-errors without
+it; omit it only for `TYPE=release` roots.)
 The `COORDINATOR` env var is required and names the worktree the new agent
 addresses for ready-to-stage handoffs and coordination questions; it varies
 per machine and per epoch (the coordinator role shifts as sessions come and
