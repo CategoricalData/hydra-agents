@@ -220,6 +220,19 @@ Non-negotiable, and the ones most often violated under pressure:
 3. **Never kill processes you do not own.** Other sessions run parallel builds;
    scope by CWD/absolute path, prefer only background tasks you spawned. When in
    doubt, ask.
+4. **Never disclose non-public project details in a public place.** A consuming
+   project may be a **private** repository. Its name, repo URL, owner, issue
+   numbers/titles, branch names, file paths, code, and internal identifiers are
+   confidential and must not appear in any public destination — a public issue
+   or PR (including one filed in *this* repo, `hydra-agents`, which is public),
+   a public commit message, an upstream bug report, or anything indexed
+   externally. This holds even when filing a legitimate cross-project report:
+   describe the problem with a **neutral placeholder** (`<project>`, `myproj`,
+   `acme/repo`), never the real private identifier. When unsure whether a
+   destination is public or whether a project is private, treat it as public and
+   the project as private, and ask. (Publishing to an external service is not
+   reversible — a later edit or delete does not un-index what was already
+   crawled.)
 
 (Staging's push to `origin/main` is the deliberate exception to rule 2 — landing
 validated batches is its charter, guarded by the intrinsic pre-push checks, not a
