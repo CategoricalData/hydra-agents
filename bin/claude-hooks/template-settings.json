@@ -1,14 +1,15 @@
 {
-  "//": "Generic hydra-agents settings template (Claude Code). The spawn script copies this into each new worktree's .claude/settings.json. It carries ONLY the framework-generic wiring: the six hooks, the AskUserQuestion deny, and a small set of universally-safe read-only allows. A consuming project appends its OWN build/test command allow-list (e.g. via .claude/settings.local.json, or by editing this after copy) — see config/examples/settings.allow.hydra.json for Hydra's build-tooling allow-list as an example. Paths are relative to the worktree root and assume the hydra-agents checkout is at agents/.",
+  "//": "Generic hydra-agents settings template (Claude Code). The spawn script copies this into each new worktree's .claude/settings.json. It carries ONLY the framework-generic wiring: the six hooks, the AskUserQuestion deny, and a small set of universally-safe read-only allows. A consuming project appends its OWN build/test command allow-list (e.g. via .claude/settings.local.json, or by editing this after copy) — see config/examples/settings.allow.hydra.json for Hydra's build-tooling allow-list as an example.",
+  "//paths": "Hook commands are anchored with $CLAUDE_PROJECT_DIR (the worktree root, absolute) per the Claude Code hooks docs — NOT a bare relative path, which would depend on the process cwd. The hydra-agents checkout lives at <project>/agents/, a peer of worktrees/, so from a worktree root ($CLAUDE_PROJECT_DIR) the scripts are at ../../agents/bin/claude-hooks/. Adjust the ../../agents prefix if a consuming project places the checkout elsewhere.",
   "hooks": {
     "UserPromptSubmit": [
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "agents/bin/claude-hooks/inbox-hook.sh" },
-          { "type": "command", "command": "agents/bin/claude-hooks/proposals-hook.sh" },
-          { "type": "command", "command": "agents/bin/claude-hooks/decisions-hook.sh" },
-          { "type": "command", "command": "agents/bin/claude-hooks/autonomy-hook.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/../../agents/bin/claude-hooks/inbox-hook.sh" },
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/../../agents/bin/claude-hooks/proposals-hook.sh" },
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/../../agents/bin/claude-hooks/decisions-hook.sh" },
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/../../agents/bin/claude-hooks/autonomy-hook.sh" }
         ]
       }
     ],
@@ -16,7 +17,7 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "agents/bin/claude-hooks/notification-hook.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/../../agents/bin/claude-hooks/notification-hook.sh" }
         ]
       }
     ],
@@ -24,7 +25,7 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "agents/bin/claude-hooks/stop-hook.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/../../agents/bin/claude-hooks/stop-hook.sh" }
         ]
       }
     ]
