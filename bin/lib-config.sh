@@ -95,6 +95,14 @@ ha_load_config() {
     HA_SPAWN_MODEL="$(_opt spawnModel opusplan)"
     HA_AGENTS_VERSION="$(_opt agentsVersion unpinned)"
 
+    # Machine-global tmux-session/agent name prefix. Branches and worktrees are
+    # per-repo, but tmux session names are per-MACHINE — so two projects on one
+    # host collide on `staging` / `feature_NNN_*`. Qualify session names (not the
+    # short branch/window/pane titles) with this prefix. Defaults to the repo
+    # name from issueRepo (e.g. "acme/myproj" → "myproj-"); override with
+    # sessionPrefix where the repo name is awkward. See hydra-agents#1.
+    HA_SESSION_PREFIX="$(_opt sessionPrefix "${HA_ISSUE_REPO##*/}-")"
+
     # Resolve the hydra-agents checkout. HYDRA_AGENTS_DIR (env) overrides for a
     # nonstandard layout; otherwise agentsDir from the config, relative to the
     # project root. Both resolve to an absolute path.
@@ -110,7 +118,8 @@ ha_load_config() {
     esac
 
     export HA_PROJECT_ROOT HA_CONFIG_FILE HA_AGENTS_DIR HA_AGENTS_VERSION \
-           HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL
+           HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL \
+           HA_SESSION_PREFIX
     unset -f _req _opt   # don't leak these generic helper names into the caller's shell
     return 0
 }

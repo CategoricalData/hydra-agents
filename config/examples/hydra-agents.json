@@ -8,5 +8,8 @@
   "issueRepo": "CategoricalData/hydra",
 
   "agentGuide": "CLAUDE.md",
-  "spawnModel": "opusplan"
+  "spawnModel": "opusplan",
+
+  "_sessionPrefix_comment": "Optional. Machine-global prefix for tmux session / agent names, so two projects on one host don't collide on `staging` / `feature_NNN_*`. Defaults to the repo name from issueRepo + '-' (here: 'hydra-'). Override only if the repo name is awkward. Branch/worktree names stay unprefixed.",
+  "sessionPrefix": "hydra-"
 }

@@ -11,7 +11,24 @@
 
 set -euo pipefail
 
+HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/lib-config.sh"
+
 WORKTREES_DIR="${HOME}/projects/github/CategoricalData/hydra/worktrees"
+
+# The session name MUST match what spawn-issue-worktree.sh created, or this
+# relauncher won't find the running session and will start a DUPLICATE agent
+# in a worktree that already has one (see hydra-agents#1). Session names are
+# machine-global and prefixed with the per-project HA_SESSION_PREFIX; resolve
+# that prefix per-worktree by loading its project's hydra-agents.json. Falls
+# back to the unprefixed dirname if a worktree has no resolvable config.
+session_name_for() {
+    local wt_path="$1" wt_name="$2" prefix=""
+    if CLAUDE_PROJECT_DIR="$wt_path" ha_load_config >/dev/null 2>&1; then
+        prefix="$HA_SESSION_PREFIX"
+    fi
+    printf '%s%s' "$prefix" "$wt_name"
+}
 
 if [ ! -d "$WORKTREES_DIR" ]; then
   echo "error: $WORKTREES_DIR not found" >&2
@@ -35,10 +52,12 @@ fi
 launched=()
 skipped=()
 for wt in "${worktrees[@]}"; do
-  session="$wt"
   wt_path="${WORKTREES_DIR}/${wt}"
+  session="$(session_name_for "$wt_path" "$wt")"
 
-  if tmux has-session -t="$session" 2>/dev/null; then
+  # `=` forces exact-name matching (tmux otherwise prefix-matches, a
+  # cross-project mis-target risk — hydra-agents#1).
+  if tmux has-session -t "=$session" 2>/dev/null; then
     skipped+=("$session (already running)")
     continue
   fi
