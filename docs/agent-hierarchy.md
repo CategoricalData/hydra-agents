@@ -27,9 +27,9 @@ routing by hierarchy), and [`agent-handoff.md`](agent-handoff.md)
 > (almost always) coordinates children.
 >
 > **Framework-agnostic.** This harness was first built around Claude Code (and
-> some artifact names reflect that history: `CLAUDE.md`, the `claude/` directory,
-> `claude-hydra-messages/`, `claude-remote`), but nothing in this model assumes
-> it. Other agent frameworks — OpenAI Codex has been used effectively — fill the
+> some artifact names reflect that history: `CLAUDE.md`, the `bin/claude-hooks/`
+> scripts, `claude-hydra-messages/`, `claude-remote`), but nothing in this model
+> assumes it. Other agent frameworks — OpenAI Codex has been used effectively — fill the
 > same roles: the issue tree, the briefing, the plan-doc, the inbox protocol, and
 > the proposal queue are all plain files and git state any agent can read and
 > write. Where a mechanism below is substrate-specific (hooks, `tmux` quirks,

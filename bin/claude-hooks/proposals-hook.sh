@@ -75,7 +75,7 @@ else
 fi
 echo ""
 echo "Pending in \`claude-hydra-messages/proposals/pending/\` (must NOT be filed"
-echo "to GitHub without explicit user approval — the harness guide’s issue-filing rule):"
+echo "to GitHub without explicit user approval — the harness guide's issue-filing rule):"
 echo ""
 for f in "${PROPOSALS[@]}"; do
     # First markdown heading of each proposal, as a one-line summary.
