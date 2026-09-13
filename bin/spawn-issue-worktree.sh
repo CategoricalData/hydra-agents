@@ -271,28 +271,43 @@ EOF
 # Worktree is fully provisioned; a failure from here should NOT tear it down.
 trap - EXIT
 
-echo "Starting tmux session '${BRANCH}'..."
-tmux new-session -d -s "${BRANCH}" -c "$WT"
-tmux set-window-option -t "${BRANCH}" automatic-rename off
-tmux set-window-option -t "${BRANCH}" allow-rename off
-tmux rename-window   -t "${BRANCH}" "${BRANCH}"
-tmux select-pane     -t "${BRANCH}" -T "${BRANCH}"
+# tmux session names are machine-GLOBAL, so qualify with the per-machine
+# session prefix (see hydra-agents#1). The branch/worktree stay unprefixed
+# (they are per-repo); only the session NAME and the -t targets get the prefix.
+# Window/pane TITLES stay the short ${BRANCH} — by the time you read those you
+# are already inside this project's session.
+SESSION="${HA_SESSION_PREFIX}${BRANCH}"
 
-tmux send-keys -t "${BRANCH}" "claude-remote -b -m ${SPAWN_MODEL}" Enter
+# Guard against a pre-existing session of the same name. `=` forces exact-name
+# matching; without it tmux prefix-matches, itself a cross-project mis-target risk.
+if tmux has-session -t "=${SESSION}" 2>/dev/null; then
+    echo "error: tmux session ${SESSION} already exists — not overwriting." >&2
+    echo "       Attach with: tmux attach -t ${SESSION}" >&2
+    exit 1
+fi
+
+echo "Starting tmux session '${SESSION}'..."
+tmux new-session -d -s "${SESSION}" -c "$WT"
+tmux set-window-option -t "${SESSION}" automatic-rename off
+tmux set-window-option -t "${SESSION}" allow-rename off
+tmux rename-window   -t "${SESSION}" "${BRANCH}"
+tmux select-pane     -t "${SESSION}" -T "${BRANCH}"
+
+tmux send-keys -t "${SESSION}" "claude-remote -b -m ${SPAWN_MODEL}" Enter
 
 # Give the agent TUI time to spin up before sending the trigger prompt, then
 # send a follow-up Enter — paste-detection occasionally eats the first.
 sleep 8
-tmux send-keys -t "${BRANCH}" "Please complete the ${GUIDE} startup procedure and address any pending inbox messages." Enter
+tmux send-keys -t "${SESSION}" "Please complete the ${GUIDE} startup procedure and address any pending inbox messages." Enter
 sleep 3
-tmux send-keys -t "${BRANCH}" Enter
+tmux send-keys -t "${SESSION}" Enter
 
 echo ""
 echo "============================================================"
 echo "Spawned ${BRANCH}:"
 echo "  worktree: $WT"
 echo "  branch:   $BRANCH"
-echo "  tmux:     tmux attach -t ${BRANCH}"
+echo "  tmux:     tmux attach -t ${SESSION}"
 echo ""
 echo "Watch attention markers from coordinator:"
 echo "  ls -la ~/.cache/claude-attention/"
