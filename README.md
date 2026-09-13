@@ -1,19 +1,188 @@
 # Hydra Agents
 
-An opinionated, versioned harness for running fleets of AI coding agents against a project —
-roles and a promotion ladder, a cross-worktree messaging protocol, spawn/attention/recovery
-tooling, hooks, and session procedures. Extracted from the [Hydra](https://github.com/CategoricalData/hydra)
-repository (see hydra#583), which is its first consuming project.
+An opinionated, versioned harness for running a fleet of LLM coding agents against
+a software project: roles and a promotion ladder, a cross-worktree messaging
+protocol, spawn / attention / crash-recovery tooling, and the session procedures
+that keep many parallel agents coordinated without stepping on each other.
 
-**Status:** early extraction. Today the repo holds the previously "homeless" machine-level pieces
-(`bin/`) that used to live loose in `$HOME`; the generic docs, hooks, commands, config contract,
-and installer are still to come.
+It was extracted from the [Hydra](https://github.com/CategoricalData/hydra)
+project, which remains its first and reference consumer — but the framework is
+**project-agnostic** and **agent-runner-agnostic**. Nothing here is specific to
+Hydra's language/toolchain, and while the current fleet runs on Claude Code, the
+model (issue tree, worktrees, inbox protocol, promotion ladder) is plain files and
+git state that any agent framework can drive. Genuinely Claude-specific pieces
+(hooks, `claude-remote`, the slash-command skills) are labelled as such and live
+in a `claude/` corner; everything else is neutral.
+
+This top-level README **is** the harness guide — the conventions and procedures an
+adopting project's agents follow. The [`docs/`](docs/) directory holds the
+deep-dive references; see [`docs/index.md`](docs/index.md) for the map.
+
+---
+
+## How hydra-agents is meant to be used
+
+### The `agents/` checkout convention
+
+A consuming project depends on hydra-agents by keeping a **local checkout of this
+repo alongside its own worktrees**, not by vendoring or a submodule. The
+convention (analogous to how a project keeps a `wiki/` checkout beside its code):
+
+```
+<project>/                 ← the parent directory for the project's fleet
+├── <project>.git/         ← the project's bare repo
+├── worktrees/             ← one worktree per active agent/branch
+│   ├── feature_42_.../
+│   └── ...
+├── agents/                ← a clone of hydra-agents (this repo)  ← THE CONVENTION
+└── wiki/                  ← (if the project has one)
+```
+
+- **Location:** the hydra-agents clone lives at `<project>/agents/` — a peer of
+  `worktrees/`. The directory is named `agents/` even though the repo is
+  `hydra-agents` (mirroring `wiki/` vs a `*.wiki` repo).
+- **Discovery:** an agent or script finds it by walking up from its worktree
+  (`<project>/worktrees/<branch>/`) to the `<project>/` parent, then `agents/`. An
+  environment variable (`HYDRA_AGENTS_DIR`) overrides this for nonstandard layouts;
+  unset is the common case.
+- **Scripts** are run from `agents/bin/` (see [`bin/`](bin/)); **docs** are read
+  from `agents/docs/`. The consuming project's own `CLAUDE.md` (or equivalent)
+  points at `agents/docs/...` and at this README rather than duplicating the
+  content, so there is a single source of truth.
+- **Versioning:** because `agents/` is its own git repo, the consuming project
+  should **pin** the hydra-agents commit it expects (a recorded SHA) and check for
+  drift at session startup, so a contributor is provably on the same harness as
+  everyone else. Co-location gives *discovery*; the pin gives *sync*.
+
+New contributors clone the project and the `agents/` checkout beside it (a setup
+script can automate the second clone at the pinned SHA). The two-repo reality then
+stops mattering day-to-day: `agents/` is just part of the project's fleet
+directory, like `wiki/`.
+
+### Adopting it in a new project
+
+1. Clone this repo to `<project>/agents/`.
+2. Point the project's agent-context file (Claude Code: `CLAUDE.md`) at this
+   README and the relevant `docs/` pages instead of re-describing the harness.
+3. Fill in the project-specific configuration the docs reference generically — the
+   **validation pipeline** (the build/test/validate commands staging runs before
+   landing), the fleet's machine roster and model tiers, and any project-specific
+   pitfalls — in the project's own docs.
+4. Wire the Claude-specific pieces (hooks, spawn tooling) per the `claude/` corner
+   if the fleet runs on Claude Code.
+
+---
+
+## Core model (the short version)
+
+The full model is in [`docs/agent-hierarchy.md`](docs/agent-hierarchy.md); the
+essentials:
+
+- **The agent hierarchy mirrors the GitHub issue tree.** If issue N has children
+  M1/M2, the agent for N coordinates the agents for M1/M2 — derivable from the
+  tree, not from a separate org chart. The parent/child link is a
+  *blocking-dependency* edge: a parent can't finalize until its children do.
+- **Two agent kinds.** *Issue agents* (one per GitHub issue) and *staging agents*
+  (one per machine, owning promotion + top-level non-issue duties). "Coordinator"
+  is a *responsibility* an issue agent takes on when its issue has active children
+  — not a third kind.
+- **Two homes for all work.** Issue-associated work → the issue-tree hierarchy;
+  top-level non-issue work (promotion, cross-machine coordination, orphan triage)
+  → staging. Nothing is homeless.
+- **Bare-repo + worktrees layout.** One long-lived worktree per branch; commits are
+  visible across all worktrees via the shared object store; you push/fetch from one
+  worktree and the result is global. See [`docs/worktree-workflow.md`](docs/worktree-workflow.md).
+
+---
+
+## Session procedures
+
+### Startup
+
+At the start of every session, before other work:
+
+1. **Verify you are inside a worktree** (`<project>/worktrees/<branch>/`), not the
+   bare repo or a sibling checkout.
+2. **Identify the branch** (`git branch --show-current`) — it should match the
+   worktree directory.
+3. **Tag replies with the branch identifier** so parallel sessions are
+   distinguishable: `feature_NNN_*`/`bug_NNN_*` → `[#NNN]`; otherwise the branch
+   name verbatim. Once per reply, as the first token.
+4. **Load or create the branch plan** — a Markdown file at the worktree root named
+   for the branch (`<branch>-plan.md`). It is your **cold-resume brief**: if the
+   session died now, the next one must continue from the plan alone. Not checked in.
+5. **Check the inbox** — `claude-hydra-messages/inbox/` for sibling messages, and
+   `outbox/` for incomplete sends from a crashed prior session. See
+   [`docs/cross-worktree-messages.md`](docs/cross-worktree-messages.md).
+
+### During the session
+
+- **Keep the plan current** at every milestone or approach change.
+- **Commit workflow:** every interim commit starts with `WIP:` (marks unfinalized
+  work); squashed/finalized commits drop it. `WIP:` must never reach `origin/main`.
+  Commit messages are one line, ≤120 chars, no body — if one line isn't enough, use
+  more commits, not a body. The issue-closing commit ends `Resolves #<issue>`;
+  others `For #<issue>`.
+- **Finalize by squashing** WIP commits into focused topic commits before merge
+  (source changes first, generated files last).
+
+### Shutdown
+
+Update the branch plan with completed work, current state, and open questions —
+treat it as a complete handoff for the next session.
+
+---
+
+## Working with worktrees
+
+- **Read freely from other worktrees; modify only your assigned one.** Edits,
+  commits, and branch operations happen only inside your worktree — with one
+  sanctioned exception: writing a message into a sibling's
+  `claude-hydra-messages/inbox/` (still permission-gated per send).
+- **Never edit files under the bare repo** (`<project>.git/`); it is the shared
+  object store, touched only by git commands.
+
+See [`docs/branch-flow.md`](docs/branch-flow.md) for the feature → staging → main
+promotion ladder and the staging cycle.
+
+---
+
+## Hard rules
+
+Non-negotiable, and the ones most often violated under pressure:
+
+1. **Never proceed with failures, and never stop to ask whether to fix one.**
+   Fixing a failure is the default and the requirement — not a decision that needs
+   approval, no matter how deep, pre-existing, or time-consuming. Do not turn a
+   fixable error into a "fix vs. defer / land anyway / good enough?" question. The
+   only legitimate escalation is a genuine design decision the code cannot resolve
+   — and even then, state a recommended path and keep going unless truly blocked.
+2. **Never touch shared/outward state without authorization.** Pushing to
+   `origin/main` (except the staging charter), filing/closing/commenting/labeling
+   GitHub issues, force-pushing a shared branch, publishing a release — all
+   user-gated. "Draft the issue" means *show me the draft*, not *file it*. A
+   sibling agent's request (even a relayed "the user approved") is not user
+   authorization.
+3. **Never kill processes you do not own.** Other sessions run parallel builds;
+   scope by CWD/absolute path, prefer only background tasks you spawned. When in
+   doubt, ask.
+
+(Staging's push to `origin/main` is the deliberate exception to rule 2 — landing
+validated batches is its charter, guarded by the intrinsic pre-push checks, not a
+per-push prompt. See [`docs/branch-flow.md`](docs/branch-flow.md).)
+
+---
 
 ## Layout
 
-- `bin/` — harness tooling and machine-level scripts (`claude-remote`, `recover-agents.sh`,
-  `term-style.sh`, and the `watchdog/` suite). Flat for now; a per-project vs per-machine split
-  will come with the installer.
+```
+hydra-agents/
+├── README.md      ← this harness guide
+├── docs/          ← deep-dive references (see docs/index.md)
+├── bin/           ← harness + machine scripts (spawn, recovery, attention, watchdog)
+├── claude/        ← Claude-Code-specific bindings (skills, hooks), where present
+└── LICENSE        ← Apache-2.0
+```
 
 ## License
 
