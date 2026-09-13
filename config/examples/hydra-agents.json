@@ -1,0 +1,12 @@
+{
+  "_comment": "Per-project harness config. Copy to your project root as hydra-agents.json and edit. All paths are relative to the project root (checked in, portable). This example carries Hydra's own values.",
+
+  "agentsDir": "./agents",
+  "agentsVersion": "unpinned",
+
+  "issueUrlBase": "https://github.com/CategoricalData/hydra/issues/",
+  "issueRepo": "CategoricalData/hydra",
+
+  "agentGuide": "CLAUDE.md",
+  "spawnModel": "opusplan"
+}

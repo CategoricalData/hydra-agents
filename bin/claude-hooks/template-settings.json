@@ -1,0 +1,72 @@
+{
+  "//": "Generic hydra-agents settings template (Claude Code). The spawn script copies this into each new worktree's .claude/settings.json. It carries ONLY the framework-generic wiring: the six hooks, the AskUserQuestion deny, and a small set of universally-safe read-only allows. A consuming project appends its OWN build/test command allow-list (e.g. via .claude/settings.local.json, or by editing this after copy) — see config/examples/settings.allow.hydra.json for Hydra's build-tooling allow-list as an example. Paths are relative to the worktree root and assume the hydra-agents checkout is at agents/.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "agents/bin/claude-hooks/inbox-hook.sh" },
+          { "type": "command", "command": "agents/bin/claude-hooks/proposals-hook.sh" },
+          { "type": "command", "command": "agents/bin/claude-hooks/decisions-hook.sh" },
+          { "type": "command", "command": "agents/bin/claude-hooks/autonomy-hook.sh" }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "agents/bin/claude-hooks/notification-hook.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "agents/bin/claude-hooks/stop-hook.sh" }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(jq *)",
+      "Bash(jq)",
+      "Bash(find . *)",
+      "Bash(find /tmp *)",
+      "Bash(xargs *)",
+      "Bash(grep -H *)",
+      "Bash(grep -l *)",
+      "Bash(grep -c *)",
+      "Bash(grep -E *)",
+      "Bash(grep -rn *)",
+      "Bash(grep -nE *)",
+      "Bash(grep -hoE *)",
+      "Bash(grep -lE *)",
+      "Bash(wc -l *)",
+      "Bash(sed -n *)",
+      "Bash(diff -rq *)",
+      "Bash(diff -u *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue status *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr status *)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)",
+      "Bash(gh repo view *)",
+      "Bash(gh auth status*)",
+      "Bash(gh --version)",
+      "Bash(tmux capture-pane *)",
+      "Bash(tmux ls)",
+      "Bash(tmux ls *)"
+    ],
+    "deny": [
+      "AskUserQuestion"
+    ]
+  }
+}
