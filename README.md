@@ -59,17 +59,71 @@ script can automate the second clone at the pinned SHA). The two-repo reality th
 stops mattering day-to-day: `agents/` is just part of the project's fleet
 directory, like `wiki/`.
 
-### Adopting it in a new project
+### Quickstart: adopting hydra-agents in a fresh project
 
-1. Clone this repo to `<project>/agents/`.
-2. Point the project's agent-context file (Claude Code: `CLAUDE.md`) at this
-   README and the relevant `docs/` pages instead of re-describing the harness.
-3. Fill in the project-specific configuration the docs reference generically — the
-   **validation pipeline** (the build/test/validate commands staging runs before
-   landing), the fleet's machine roster and model tiers, and any project-specific
-   pitfalls — in the project's own docs.
-4. Wire the Claude-specific pieces (hooks, spawn tooling) per the `claude/` corner
-   if the fleet runs on Claude Code.
+Prerequisites: `git`, `tmux`, the GitHub CLI (`gh`, authenticated), and `jq`
+(the harness scripts read config with `jq` and deliberately avoid a Python
+dependency). The project should use the bare-repo + worktrees layout (see
+[`docs/worktree-workflow.md`](docs/worktree-workflow.md)).
+
+**1. Check out hydra-agents to the canonical location** — `agents/`, a peer of
+the project's `worktrees/`:
+
+```sh
+# from the project's fleet parent directory (the one containing worktrees/)
+git clone https://github.com/CategoricalData/hydra-agents.git agents
+```
+
+Pin it: note the checked-out commit (`git -C agents rev-parse HEAD`) and record it
+as `agentsVersion` in step 2, so every contributor is provably on the same harness.
+
+**2. Populate `hydra-agents.json` at the project root** — copy the reference and
+edit it (all paths are relative to the project root; check the file in):
+
+```sh
+cp agents/config/examples/hydra-agents.json <project-root>/hydra-agents.json
+$EDITOR <project-root>/hydra-agents.json
+```
+
+Fields:
+
+| Field | What it is |
+|---|---|
+| `agentsDir` | Where the checkout lives, relative to the project root. Default `./agents`. |
+| `agentsVersion` | The pinned hydra-agents commit/tag this project expects. |
+| `issueUrlBase` | Your issue tracker's URL base, e.g. `https://github.com/ORG/REPO/issues/`. |
+| `issueRepo` | `owner/repo` for `gh` (used by the orphan-issue scan). |
+| `agentGuide` | The agent-context filename your runner auto-loads. Claude Code: `CLAUDE.md`. |
+| `spawnModel` | Default model tier for spawned agents. |
+
+The harness scripts find this file by walking up from any worktree; they **error
+with guidance if it is absent** (no silent fallback to another project's values).
+
+**3. Point your agent-context file at the harness.** In the project's `CLAUDE.md`
+(or your runner's equivalent), link to this README and the [`docs/`](docs/) pages
+rather than re-describing the harness. Keep only project-specific content
+(build/test commands, project lore) in your own docs.
+
+**4. Wire the runner (Claude Code).** The spawn script seeds each new worktree's
+`.claude/settings.json` from
+[`bin/claude-hooks/template-settings.json`](bin/claude-hooks/template-settings.json)
+(the six hooks + a universal read-only allow-list). Append your project's own
+build/test command allow-list — see
+[`config/examples/settings.allow.hydra.json`](config/examples/settings.allow.hydra.json)
+for Hydra's as a worked example. On a disposable build box, `touch ~/.hydra-sandbox`
+to enable permission bypass (see [`docs/sandbox-permissions.md`](docs/sandbox-permissions.md)).
+
+**5. Get started — spawn your first agent:**
+
+```sh
+COORDINATOR=<coord-worktree> PARENT=<parent-issue> \
+  agents/bin/spawn-issue-worktree.sh <issue-number> <slug> "<issue title>"
+```
+
+This creates a worktree + branch, seeds its inbox with a briefing, and launches a
+session. From there the fleet follows the lifecycle in
+[`docs/agent-handoff.md`](docs/agent-handoff.md) and
+[`docs/coordinator-workflow.md`](docs/coordinator-workflow.md).
 
 ---
 
