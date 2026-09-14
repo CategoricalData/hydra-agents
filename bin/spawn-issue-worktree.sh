@@ -293,11 +293,43 @@ tmux set-window-option -t "${SESSION}" allow-rename off
 tmux rename-window   -t "${SESSION}" "${BRANCH}"
 tmux select-pane     -t "${SESSION}" -T "${BRANCH}"
 
-tmux send-keys -t "${SESSION}" "claude-remote -b -m ${SPAWN_MODEL}" Enter
+# No explicit -b: claude-remote auto-adds --dangerously-skip-permissions
+# when ~/.hydra-sandbox is present, and leaves normal prompting in place when
+# it is not (see docs/sandbox-permissions.md, "Enforcement points"). Passing
+# -b here forced bypass on every machine, including non-sandbox laptops --
+# which silently disabled permission deny rules for every spawned agent.
+tmux send-keys -t "${SESSION}" "claude-remote -m ${SPAWN_MODEL}" Enter
 
-# Give the agent TUI time to spin up before sending the trigger prompt, then
+# Wait for the agent TUI to actually be ready before sending the trigger.
+# A fixed sleep is not enough: startup can stop on a folder-trust prompt or a
+# bypass-mode confirmation, both of which DEFAULT TO "No, exit". Typing the
+# trigger into one of those dialogs answers it instead of prompting the agent.
+# Poll for the input line, and surface the dialog rather than blundering into it.
+_ready=""
+for _i in $(seq 1 40); do
+    _pane="$(tmux capture-pane -p -t "${SESSION}" 2>/dev/null || true)"
+    case "$_pane" in
+        *"trust this folder"*|*"Yes, I accept"*)
+            echo "" >&2
+            echo "error: agent startup is waiting on an interactive prompt:" >&2
+            echo "         tmux attach -t ${SESSION}" >&2
+            echo "       Answer it, then send the startup trigger by hand:" >&2
+            echo "         Please complete the ${GUIDE} startup procedure and address any pending inbox messages." >&2
+            exit 1
+            ;;
+    esac
+    case "$_pane" in
+        *"for shortcuts"*) _ready=1; break ;;
+    esac
+    sleep 1
+done
+if [ -z "$_ready" ]; then
+    echo "error: agent TUI did not become ready within 40s — attach and check:" >&2
+    echo "         tmux attach -t ${SESSION}" >&2
+    exit 1
+fi
+
 # send a follow-up Enter — paste-detection occasionally eats the first.
-sleep 8
 tmux send-keys -t "${SESSION}" "Please complete the ${GUIDE} startup procedure and address any pending inbox messages." Enter
 sleep 3
 tmux send-keys -t "${SESSION}" Enter
