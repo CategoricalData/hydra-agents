@@ -22,12 +22,27 @@ WORKTREES_DIR="${HOME}/projects/github/CategoricalData/hydra/worktrees"
 # machine-global and prefixed with the per-project HA_SESSION_PREFIX; resolve
 # that prefix per-worktree by loading its project's hydra-agents.json. Falls
 # back to the unprefixed dirname if a worktree has no resolvable config.
+# Must construct the SAME session name as spawn-issue-worktree.sh, or recovery
+# looks for the wrong name and relaunches a duplicate. Two axes: the per-project
+# HA_SESSION_PREFIX, and — for STANDARDIZED branches (staging, …) that exist on
+# every machine — a `hostname -s` suffix (see worktree-workflow.md). The current
+# worktree glob below matches only bug_*/feature_* (unique issue branches, which
+# are never in the standardized set), so the suffix is a no-op today; it is kept
+# here so the two derivation sites stay in agreement if the glob ever widens to
+# standardized branches.
 session_name_for() {
-    local wt_path="$1" wt_name="$2" prefix=""
+    local wt_path="$1" wt_name="$2" prefix="" sess_branch="$2"
     if CLAUDE_PROJECT_DIR="$wt_path" ha_load_config >/dev/null 2>&1; then
         prefix="$HA_SESSION_PREFIX"
+        local _std
+        for _std in ${HA_STANDARDIZED_BRANCHES}; do
+            if [ "$wt_name" = "$_std" ]; then
+                sess_branch="${wt_name}-${HA_MACHINE}"
+                break
+            fi
+        done
     fi
-    printf '%s%s' "$prefix" "$wt_name"
+    printf '%s%s' "$prefix" "$sess_branch"
 }
 
 if [ ! -d "$WORKTREES_DIR" ]; then

@@ -103,6 +103,16 @@ ha_load_config() {
     # sessionPrefix where the repo name is awkward. See hydra-agents#1.
     HA_SESSION_PREFIX="$(_opt sessionPrefix "${HA_ISSUE_REPO##*/}-")"
 
+    # Standardized branch names (staging, etc.) exist on EVERY machine, so their
+    # agent/session name collides across a multi-machine fleet even after the
+    # per-project prefix above. Machine-qualify ONLY those (see the spawn script):
+    # issue branches like feature_NNN_* are already unique, and a machine suffix
+    # would just make them longer, hurting readability in the mobile agent picker.
+    # This is the machine-qualification layer above hydra-agents#1's session prefix.
+    # Space-separated set (jq-friendly, no array parsing); override via config.
+    HA_STANDARDIZED_BRANCHES="$(_opt standardizedBranches "staging")"
+    HA_MACHINE="$(hostname -s 2>/dev/null || echo unknown)"
+
     # Resolve the hydra-agents checkout. HYDRA_AGENTS_DIR (env) overrides for a
     # nonstandard layout; otherwise agentsDir from the config, relative to the
     # project root. Both resolve to an absolute path.
