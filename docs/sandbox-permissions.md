@@ -48,6 +48,12 @@ Bypass must be applied wherever an agent is *created*. There are two paths:
 
 ### 1. Spawned agents — `bin/spawn-issue-worktree.sh`
 
+The spawn script must **not** pass `-b` to `claude-remote` — the launcher
+already applies the marker rule itself (point 2 below), so an explicit `-b`
+forces bypass on *every* machine, sandbox or not. That is precisely what a
+non-sandbox machine must not get: bypass disables the harness permission layer
+wholesale, including any `permissions.deny` rules the project relies on.
+
 The spawn script seeds each new worktree's `.claude/settings.json`. The
 checked-in template (`bin/claude-hooks/template-settings.json`) must **not** carry
 `defaultMode: bypassPermissions` (that would leak bypass to every machine that
@@ -71,6 +77,12 @@ Bypass removes the *harness* permission layer — including the "shell syntax ca
 be statically analyzed" prompt that the allowlist cannot suppress (the prompt
 class that most often stalls a fleet, since `$(...)`, heredocs, and control-flow
 can't be matched against an allowlist at all).
+
+It also removes **`permissions.deny` rules**, which are part of that same
+harness layer. A project that uses deny rules to fence off sensitive paths gets
+no enforcement from them under bypass. That is acceptable on a disposable
+sandbox and is not acceptable anywhere else — another reason bypass must stay
+gated on the marker rather than being forced by a caller.
 
 It does **not** remove OS-level protections: `sudo` and anything requiring
 elevated privileges are still gated by the operating system, which is correct —
