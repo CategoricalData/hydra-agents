@@ -276,7 +276,21 @@ trap - EXIT
 # (they are per-repo); only the session NAME and the -t targets get the prefix.
 # Window/pane TITLES stay the short ${BRANCH} — by the time you read those you
 # are already inside this project's session.
-SESSION="${HA_SESSION_PREFIX}${BRANCH}"
+#
+# Additionally machine-qualify the branch component for STANDARDIZED branches
+# (staging, …): those exist on every machine, so their session/agent name would
+# be indistinguishable across a multi-machine fleet even with the project prefix.
+# Issue branches (feature_NNN_*) are already unique and stay unqualified — a
+# machine suffix would only cost readability in the mobile agent picker.
+# HA_STANDARDIZED_BRANCHES is a space-separated set from config (default "staging").
+SESSION_BRANCH="${BRANCH}"
+for _std in ${HA_STANDARDIZED_BRANCHES}; do
+    if [ "${BRANCH}" = "${_std}" ]; then
+        SESSION_BRANCH="${BRANCH}-${HA_MACHINE}"
+        break
+    fi
+done
+SESSION="${HA_SESSION_PREFIX}${SESSION_BRANCH}"
 
 # Guard against a pre-existing session of the same name. `=` forces exact-name
 # matching; without it tmux prefix-matches, itself a cross-project mis-target risk.

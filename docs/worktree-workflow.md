@@ -23,7 +23,8 @@ Qualify each name exactly as far as its namespace reaches:
 | | namespace | name |
 |---|---|---|
 | branch / worktree | one repo | `staging`, `feature_42_foo` |
-| **tmux session / agent** | **the machine** | `<prefix>staging`, `<prefix>feature_42_foo` |
+| tmux session / agent (issue branch) | **the machine** | `<prefix>feature_42_foo` |
+| tmux session / agent (standardized branch) | **the whole fleet** | `<prefix>staging-<machine>` |
 
 Branch and worktree names are scoped to one repository, so `staging` and
 `feature_42_foo` are unambiguous there. But **tmux session names are
@@ -39,6 +40,19 @@ Window and pane **titles** stay the short branch name: by the time you are
 reading those, you are already inside the project's session, and `term-style.sh`
 sets them from the branch. Set `sessionPrefix` in `hydra-agents.json` only if the
 repo name is awkward. (See hydra-agents#1.)
+
+**Standardized branches need a second axis.** The project prefix disambiguates
+*projects on one machine*, but a small set of well-known branch names — `staging`
+above all — exists on **every machine in a fleet**. `<prefix>staging` alone is
+still ambiguous when the fleet spans hosts: two machines each run a `staging`
+agent, indistinguishable in the mobile agent picker, in logs, and in cross-machine
+coordination. So the **session/agent name for a standardized branch is also
+machine-qualified** with a `hostname -s` suffix — `hydra-staging-alpha`,
+`hydra-staging-marvin7`. Issue branches stay unqualified: their names are already
+unique, and a machine suffix would only cost readability. The set of standardized
+branch names is `standardizedBranches` in `hydra-agents.json` (space-separated,
+default `staging`). The branch and worktree on disk keep the short local name
+(`staging`); only the agent *identity* carries the machine suffix.
 
 ## Shared object store
 

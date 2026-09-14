@@ -11,5 +11,8 @@
   "spawnModel": "opusplan",
 
   "_sessionPrefix_comment": "Optional. Machine-global prefix for tmux session / agent names, so two projects on one host don't collide on `staging` / `feature_NNN_*`. Defaults to the repo name from issueRepo + '-' (here: 'hydra-'). Override only if the repo name is awkward. Branch/worktree names stay unprefixed.",
-  "sessionPrefix": "hydra-"
+  "sessionPrefix": "hydra-",
+
+  "_standardizedBranches_comment": "Optional. Space-separated set of branch names that exist on EVERY machine (staging, …) and so must be machine-qualified in the session/agent name to stay distinct across a multi-machine fleet — e.g. staging -> 'hydra-staging-alpha' / 'hydra-staging-marvin7' (suffix from `hostname -s`). Issue branches (feature_NNN_*) are already unique and stay unqualified. Defaults to 'staging'.",
+  "standardizedBranches": "staging"
 }
