@@ -112,6 +112,30 @@ A background-run notification can fire while the command is genuinely still runn
 Confirm completion against a real log marker or a process check, not the tool's
 completion signal alone, before acting on "it finished."
 
+### Fleet scripts must run on bash 3.2 and BSD userland, not just GNU/Linux
+A fleet whose machines include macOS has two shells and two userlands. macOS ships
+**bash 3.2** as `/bin/bash` (licensing) and BSD coreutils; Linux agents author with bash
+5.x and GNU. A Linux-authored script using a bash-4+ builtin or a GNU-only flag does not
+degrade — under `set -euo pipefail` it aborts on the offending line, often *before doing
+any work*, which is worst when the script is itself a repair tool. Constructs seen to
+break in practice:
+
+| Construct | Fails on macOS | Portable form |
+|-----------|----------------|---------------|
+| `mapfile -t A < <(…)` / `readarray` | bash 4+ only | `A=(); while IFS= read -r x; do A+=("$x"); done < <(…)` |
+| `declare -A` (associative arrays) | bash 4+ only | newline-delimited string + `grep -qxF` |
+| `${#arr[@]:-0}` | invalid on any bash | `${#arr[@]}` (always defined, even when empty) |
+| `find … -printf` | BSD `find` accepts it silently and emits nothing | `-print0` + `xargs`, or a `basename` loop |
+| `date -Is`, `date -d <str>` | GNU only | `date '+%Y-%m-%dT%H:%M:%S%z'`; store epoch seconds via `date +%s` |
+| `flock(1)` | util-linux; absent entirely | prefer real `flock` when present, else emulate (e.g. Perl's `flock`) |
+| `timeout` / `gtimeout` | coreutils; absent | background the command and poll with a kill guard |
+
+Two properties make this class expensive out of proportion to its triviality: the failure
+is *total* rather than partial, and it is invisible to the author's own testing. Check any
+new fleet script against a macOS host — or at minimum grep it for the left column — before
+landing. The same applies to scripts an agent patches: fixing the GNU-only line you came
+for does not make the rest of the file portable.
+
 ## Coordination hygiene
 
 ### A send is done only when verified at the destination
