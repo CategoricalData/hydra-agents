@@ -212,7 +212,8 @@ context. This branch is dedicated to investigating and addressing it.
 2. Read the issue body via \`gh issue view ${NUM}\`. Investigate the symptom
    and propose a root cause.
 3. Write your plan to \`${BRANCH}-plan.md\` at the worktree root.
-4. Iterate: commit small, push often, draft a PR when ready for review.
+4. Iterate: commit small. Do NOT push your branch or open a PR — hand your diff off to
+   staging/the coordinator when ready for review.
 
 ### Scoped reading (keep your context lean)
 
