@@ -5,7 +5,8 @@
 # See ~/watchdog/runbook.md for the freeze-window analysis recipe.
 
 set -u
-LOG="/home/josh/watchdog/logs/heartbeat.log"
+WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-$HOME/watchdog/logs}"
+LOG="$WATCHDOG_STATE_DIR/heartbeat.log"
 INTERVAL=5
 MAX_BYTES=$((20 * 1024 * 1024))   # 20 MB
 

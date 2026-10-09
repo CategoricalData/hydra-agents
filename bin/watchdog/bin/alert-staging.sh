@@ -29,7 +29,8 @@ set -u
 
 WT_ROOT="/home/josh/projects/github/CategoricalData/hydra/worktrees"
 ATTENTION_DIR="$HOME/.cache/claude-attention"
-COOLDOWN_STAMP="/home/josh/watchdog/logs/.last-staging-alert"
+WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-$HOME/watchdog/logs}"
+COOLDOWN_STAMP="$WATCHDOG_STATE_DIR/.last-staging-alert"
 COOLDOWN_SECS=900   # 15 min — one alert per window, no matter how long it squeezes
 
 reason="${1:-unspecified}"

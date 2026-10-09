@@ -8,7 +8,13 @@
 # See ~/watchdog/runbook.md for the interpretation guide.
 
 set -u
-LOG="/home/josh/watchdog/logs/health.log"
+# Machine-local runtime state (logs + stamp files) lives OUTSIDE the submodule —
+# WATCHDOG_STATE_DIR defaults to the historical ~/watchdog/logs. Sibling scripts
+# (alert/heartbeat) are resolved relative to THIS script's own dir, so the whole
+# set floats together when consumed from a submodule, with no hardcoded checkout path.
+WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-$HOME/watchdog/logs}"
+_HM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG="$WATCHDOG_STATE_DIR/health.log"
 MAX_BYTES=$((50 * 1024 * 1024))   # 50 MB rotate threshold
 
 # rotate if too big — keep one .1 backup
@@ -100,7 +106,7 @@ sync -d "$LOG" 2>/dev/null || sync
 # this staying true every tick during a squeeze does not spam.
 #   Trigger:  swap used >= 90%  OR  PSI memory some-avg10 >= 40%
 # ----------------------------------------------------------------------------
-ALERT="/home/josh/watchdog/bin/alert-staging.sh"
+ALERT="$_HM_DIR/alert-staging.sh"
 if [ -x "$ALERT" ]; then
   # swap used % (integer); 0 if no swap configured
   swap_pct=$(free | awk '/^Swap:/ { if ($2>0) printf "%d", ($3*100)/$2; else print 0 }')
@@ -127,5 +133,5 @@ fi
 # the heartbeats stop exactly when this collector (or the machine) stops — which
 # is the absence-signal staging watches for. See heartbeat-staging.sh.
 # ----------------------------------------------------------------------------
-HEARTBEAT="/home/josh/watchdog/bin/heartbeat-staging.sh"
+HEARTBEAT="$_HM_DIR/heartbeat-staging.sh"
 [ -x "$HEARTBEAT" ] && "$HEARTBEAT" >/dev/null 2>&1 || true

@@ -26,7 +26,8 @@
 set -u
 
 WT_ROOT="/home/josh/projects/github/CategoricalData/hydra/worktrees"
-INTERVAL_STAMP="/home/josh/watchdog/logs/.last-staging-heartbeat"
+WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-$HOME/watchdog/logs}"
+INTERVAL_STAMP="$WATCHDOG_STATE_DIR/.last-staging-heartbeat"
 SEND_INTERVAL_SECS=600   # 10 min send cadence (staging alarms at >15 min silence)
 
 # Stable filename → each send overwrites the last in staging's inbox.
