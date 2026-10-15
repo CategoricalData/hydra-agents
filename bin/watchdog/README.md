@@ -230,6 +230,40 @@ The staging-side handling of a stale/absent beat is documented in the Hydra repo
 in `bin/heartbeat-staging.sh` (and keep staging's alarm threshold comfortably
 above it).
 
+## macOS
+
+Everything above describes the Linux collectors (systemd). A Mac running agent
+workers gets a single, simpler collector in `macos/`:
+
+```
+macos/
+├── health-watchdog.sh       # 60s snapshot + alert, run by launchd
+├── launchd.plist.template   # rendered by install.sh
+└── install.sh               # render the plist into ~/Library/LaunchAgents and load it
+```
+
+Each run appends one line (`pressure=… free_pct=… load=… disk_avail_gb=…`) to
+`$WATCHDOG_STATE_DIR/health.log`. It alerts when macOS reports **critical** memory
+pressure, a **warning** level on two consecutive samples, or less than
+`WATCHDOG_DISK_MIN_GB` (default 20) free on `/`. An alert writes an advisory message
+into the staging agent's inbox (`WATCHDOG_INBOX`) plus an attention marker in
+`~/.cache/claude-attention/`, de-bounced to one per `WATCHDOG_COOLDOWN_SECS`
+(default 30 min). As on Linux, it is a script that warns; staging is the agent that
+decides. The 5-second heartbeat and the staging liveness ping are not ported yet;
+the health log's one-line-per-minute cadence still brackets a hard reset to within a
+minute.
+
+Install (or change settings) from the checkout you want it to run from:
+
+```bash
+WATCHDOG_INBOX=<staging worktree>/claude-hydra-messages/inbox \
+  bin/watchdog/macos/install.sh
+tail -3 ~/watchdog/logs/health.log
+```
+
+The script is portable to the stock `/bin/bash` 3.2 and BSD userland. Every setting
+is an environment variable documented at the top of `health-watchdog.sh`.
+
 ## Where Claude fits in
 
 Claude is **not** part of the hot path. There is no Claude session running
