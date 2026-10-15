@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent for health-watchdog.sh. Rendered and loaded by install.sh,
+  which substitutes the @…@ placeholders. Edit WATCHDOG_* values here, or
+  re-run install.sh with them set in the environment.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>@LABEL@</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>@SCRIPT@</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>WATCHDOG_STATE_DIR</key>
+		<string>@STATE_DIR@</string>
+		<key>WATCHDOG_INBOX</key>
+		<string>@INBOX@</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartInterval</key>
+	<integer>60</integer>
+	<key>StandardErrorPath</key>
+	<string>@STATE_DIR@/launchd-stderr.log</string>
+</dict>
+</plist>
