@@ -75,6 +75,14 @@ claude-remote() {
   if [ -z "$bypass" ] && [ -f "$HOME/.hydra-sandbox" ]; then
     bypass="--dangerously-skip-permissions"
   fi
+  # An empty-but-set CLAUDE_CONFIG_DIR makes Claude Code keep its whole state
+  # (transcripts, sessions/, history.jsonl, ...) in the CURRENT directory instead
+  # of ~/.claude, silently, and outside any user settings. Wrappers that pass
+  # CLAUDE_CONFIG_DIR="${maybe_empty}" trigger this. See docs/pitfalls.md.
+  if [ -n "${CLAUDE_CONFIG_DIR+x}" ] && [ -z "$CLAUDE_CONFIG_DIR" ]; then
+    echo "claude-remote: ignoring empty CLAUDE_CONFIG_DIR (it would put Claude state in $PWD)" >&2
+    unset CLAUDE_CONFIG_DIR
+  fi
   echo -ne "\033]0;Claude: $label\007"
   CLAUDE_LABEL="$label" claude --remote-control "$label" --model "$model" $bypass "$@"
 }

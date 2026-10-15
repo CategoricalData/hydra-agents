@@ -99,6 +99,17 @@ for a live process cwd'd in its worktree, not by the session's on-screen "N shel
 badge (which goes stale). Ghost/placeholder text at the prompt that won't clear with
 `C-u` is display-only; don't "fix" it with Enter (that submits it).
 
+### An empty `CLAUDE_CONFIG_DIR` scatters session state into project trees
+Symptom: folders like `projects/`, `sessions/`, `backups/`, `history.jsonl` and
+`.last-cleanup` appear in worktrees or other launch directories; transcripts seem to
+vanish from `~/.claude/projects`; the session ignores your `~/.claude` settings and
+hooks. Cause: a wrapper exported `CLAUDE_CONFIG_DIR` set but empty (typically
+`CLAUDE_CONFIG_DIR="${maybe_empty}" claude …`), and Claude Code then keeps its state
+relative to the current directory. Fix: set the variable only when it has a value
+(`bin/claude-remote` now drops an empty one); check a live session with
+`ps eww -o command= -p <pid> | tr ' ' '\n' | grep '^CLAUDE_CONFIG_DIR='`, and move any
+stray transcripts into `~/.claude/projects/` before resuming them.
+
 ## Shell-tool mechanics (substrate-specific)
 
 ### Multi-line / control-flow / heredoc in a single tool call can hang or prompt
