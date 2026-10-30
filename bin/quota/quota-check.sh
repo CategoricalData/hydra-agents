@@ -2,7 +2,8 @@
 # quota-check.sh: should the fleet launch spare-quota work now? See docs/quota-pacing.md.
 #
 #   quota-check.sh [--target 90] [--limit TARGET] [--margin 3] [--fleets 1] [--ease-hours 1]
-#                  [--burn-window 60] [--stale 15] [--json] [--watch SECONDS]
+#                  [--burn-window 60] [--stale 15] [--json]
+#                  [--watch SECONDS [--heartbeat SECONDS]]
 #
 # Reads $QUOTA_DIR/rate-limits.json (written by statusline.sh) and prints one
 # verdict about EXTRA work (spare-quota passes, optional jobs), never about the
@@ -37,14 +38,17 @@
 # another account's session. A later resets_at starts a new window: the state
 # is reset and STOP is removed.
 #
-# --watch SECONDS re-checks every SECONDS and exits when the verdict changes.
-# Run it as a background job, so its exit wakes an idle coordinator.
+# --watch SECONDS re-checks every SECONDS and exits when the verdict changes,
+# or after --heartbeat SECONDS (default 1800) even if it did not: a fleet that
+# stays at `go` must keep launching, and an unchanged verdict would otherwise
+# never wake it. Run it as a background job, so its exit wakes an idle
+# coordinator, and re-arm it first thing on every wake.
 #
 # Exit status: 0 go, 10 hold, 11 ease, 12 stop, 3 no reading. Requires jq.
 
 set -u
 QUOTA_DIR="${QUOTA_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/usage}"
-TARGET=""; LIMIT=""; MARGIN=3; FLEETS=1; EASE_HOURS=1; BURN_WINDOW=60; STALE=15; JSON=false; WATCH=""
+TARGET=""; LIMIT=""; MARGIN=3; FLEETS=1; EASE_HOURS=1; BURN_WINDOW=60; STALE=15; JSON=false; WATCH=""; HEARTBEAT=1800
 while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET="$2"; shift 2 ;;
@@ -56,7 +60,8 @@ while [ $# -gt 0 ]; do
         --stale) STALE="$2"; shift 2 ;;
         --json) JSON=true; shift ;;
         --watch) WATCH="$2"; shift 2 ;;
-        -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --heartbeat) HEARTBEAT="$2"; shift 2 ;;
+        -h|--help) sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "quota-check: unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -134,10 +139,12 @@ code() { case "$1" in go) echo 0 ;; hold) echo 10 ;; ease) echo 11 ;; stop) echo
 
 r="$(check)"; v0="$(printf '%s' "$r" | jq -r .verdict)"
 if [ -n "$WATCH" ]; then
+    started="$(date +%s)"
     while :; do
         sleep "$WATCH"
         r="$(check)"; v="$(printf '%s' "$r" | jq -r .verdict)"
         [ "$v" != "$v0" ] && break
+        [ $(( $(date +%s) - started )) -ge "$HEARTBEAT" ] && break
     done
     v0="$v"
 fi

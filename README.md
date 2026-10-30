@@ -112,6 +112,8 @@ build/test command allow-list — see
 [`config/examples/settings.allow.hydra.json`](config/examples/settings.allow.hydra.json)
 for Hydra's as a worked example. On a disposable build box, `touch ~/.hydra-sandbox`
 to enable permission bypass (see [`docs/sandbox-permissions.md`](docs/sandbox-permissions.md)).
+Optionally, for quota pacing near the weekly reset, install the status line and
+the `/quota-pacing` skill at the user level (see [`docs/quota-pacing.md`](docs/quota-pacing.md)).
 
 **5. Get started — spawn your first agent:**
 
@@ -248,7 +250,9 @@ hydra-agents/
 ├── docs/              ← deep-dive references (see docs/index.md)
 ├── bin/               ← harness + machine scripts (spawn, scan, recovery, term-style, watchdog/)
 │   ├── lib-config.sh      ← reads the consuming project's hydra-agents.json
-│   └── claude-hooks/      ← Claude-Code-specific hooks + template-settings.json
+│   ├── claude-hooks/      ← Claude-Code-specific hooks + template-settings.json
+│   └── quota/             ← quota pacing: status-line reading, go/hold/ease/stop check
+├── skills/            ← Claude Code skills (user-level install; e.g. /quota-pacing)
 ├── config/examples/   ← hydra-agents.json + settings.allow.hydra.json reference files
 └── LICENSE            ← Apache-2.0
 ```

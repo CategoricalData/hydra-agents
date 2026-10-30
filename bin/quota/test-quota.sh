@@ -28,6 +28,9 @@ reading $(( T - 1800 )) 60 $RESET
 expect "one reading: no burn yet" hold
 reading "$T" 61 $RESET                        # 2 points/h; 61 + 2 x 10 h = 81 < 90
 expect "projected under the target" go
+t0=$(date +%s); "$HERE/quota-check.sh" --watch 1 --heartbeat 2 > /dev/null; rc=$?
+[ $rc -eq 0 ] && [ $(( $(date +%s) - t0 )) -le 5 ] \
+    && echo "ok   --watch wakes on the heartbeat while the verdict stays go" || { echo "FAIL heartbeat (rc $rc)"; fails=$((fails + 1)); }
 reading "$T" 58 $RESET                        # another account, same reset
 r="$("$HERE/quota-check.sh" --json)"
 [ "$(printf '%s' "$r" | jq -r .skipped)" != null ] && [ "$(printf '%s' "$r" | jq -r .used)" = 61 ] \
