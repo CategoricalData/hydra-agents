@@ -81,9 +81,27 @@ thing only, before each token-heavy step (a subagent, a pass, a large build):
 
 **An idle coordinator does not wake itself.** A cadence the coordinator only
 intends to keep does nothing once its session is idle, and the fleet stalls with
-quota left. Run `quota-check.sh --watch 600` as a background job. It exits when
-the verdict changes (for example from `hold` to `go`), and its exit re-invokes
-the session. Restart it after each wake.
+quota left. In the trial, the coordinator's timer lapsed for an hour and a half,
+and that was the night's largest shortfall. Run
+`quota-check.sh --watch 300 --heartbeat 1800` as a background job. It exits
+when the verdict changes, and also every 30 minutes regardless: a fleet that
+stays at `go` has to keep launching, and an unchanged verdict would otherwise
+never wake it. Its exit re-invokes the session. Re-arm it first thing on every wake.
+
+**On every wake, read every channel.** Answers to the coordinator's own
+questions can sit unread for hours if only the inbox is polled; check the
+decision channel too.
+
+**Keep the queue ahead of the verdict.** `go` with nothing ready to launch is
+idle time, and planning a new round of work took 10–15 minutes each time. Cut
+the next batch while the current one runs.
+
+**Workers check `STOP` between steps.** A worker's `a && b | c` pipeline doesn't
+halt on `STOP` in the middle, so check before each request or step of a long loop.
+
+**Budget the disk, too.** Spare-quota work that applies many batches can consume
+disk faster than tokens: a backup per applied batch came to about 25 GB over 12
+batches in the trial.
 
 ## Several fleets on one account
 
@@ -110,10 +128,20 @@ Even split between fleets is not guaranteed: whichever fleet checks while
 there's room gets it. If the user wants a fleet to get less, give it a lower
 `--target`; it then holds while the others still `go`.
 
+**The 5-hour window.** In the trial it never bound: it peaked at about half,
+with 11–14 agents at about 10 weekly points an hour. The check reports only the
+weekly window. If the 5-hour window ever binds, everything waits for its reset,
+so watch its value in the status line during a hard push.
+
 ## Spare-quota work
 
-Good spare-quota work needs no live decision from the user, and can stop at
-any point without leaving a mess:
+**The user defines it.** Pacing decides how fast to spend; what to spend on always
+takes a conversation with the user first, and without one the fleet launches
+nothing extra. The work has to be **relatively unlimited** (a backlog larger than
+the quota left, so `go` never runs dry) and **throttleable**: small units that can
+be launched one or two at a time and stopped between any two. Good spare-quota
+work also needs no live decision from the user, and can stop at any point
+without leaving a mess:
 
 - batch passes whose output is pending or reviewable (nothing applied until the
   user approves);
@@ -122,6 +150,15 @@ any point without leaving a mess:
 
 Anything that needs the user's approval is queued for when they're back, and the
 pace never touches shared state the user owns.
+
+## The skill
+
+`skills/quota-pacing/SKILL.md` is the operational card as a Claude Code
+skill (`/quota-pacing`): status, install, raising the target, the
+coordinator's loop and the worker brief line. Install it at the user level, since
+the quota belongs to the account and not to a project:
+`ln -s <agents>/skills/quota-pacing ~/.claude/skills/quota-pacing`
+(or under `$CLAUDE_CONFIG_DIR/skills/` for another config dir).
 
 ## Testing
 
