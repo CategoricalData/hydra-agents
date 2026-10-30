@@ -86,6 +86,13 @@ as *separate* `send-keys` invocations chained in ONE shell command with a sub-se
 sleep between, then `capture-pane` to confirm it actually submitted (or queued). An
 unsubmitted ping sits invisibly in the box.
 
+### An exact-match tmux target needs the trailing colon
+`tmux has-session -t "=name"` matches a session exactly (without `=`, tmux
+prefix-matches and can hit the wrong session). But `send-keys` and `capture-pane`
+take a *pane* target, and `-t "=name"` fails there with "can't find pane"; use
+`-t "=name:"` (session, current window). Easy to miss because the check
+(`has-session`) works with the form that the action then rejects.
+
 ### Attribute a ping to its sender
 Injected keystrokes are indistinguishable from the supervising human typing. Start
 every cross-session ping with `From <sender>: ` and spell out absolute paths — never
@@ -112,6 +119,15 @@ A background-run notification can fire while the command is genuinely still runn
 Confirm completion against a real log marker or a process check, not the tool's
 completion signal alone, before acting on "it finished."
 
+### Never edit a shell script in place while something is running it
+bash reads a script incrementally as it executes, so rewriting the file under a
+running instance (an editor save, `sed -i`, a truncating write) can make that
+instance run a mix of old and new bytes: skipped or repeated commands, syntax
+errors mid-run. This bites lock/slot wrappers in particular, because several
+agents may be blocked inside one at any moment. Write the new version to a
+temporary file and `mv` it over the old one: the rename gives the path a new
+inode, and running instances keep reading the old one.
+
 ### Fleet scripts must run on bash 3.2 and BSD userland, not just GNU/Linux
 A fleet whose machines include macOS has two shells and two userlands. macOS ships
 **bash 3.2** as `/bin/bash` (licensing) and BSD coreutils; Linux agents author with bash
@@ -129,6 +145,8 @@ break in practice:
 | `date -Is`, `date -d <str>` | GNU only | `date '+%Y-%m-%dT%H:%M:%S%z'`; store epoch seconds via `date +%s` |
 | `flock(1)` | util-linux; absent entirely | prefer real `flock` when present, else emulate (e.g. Perl's `flock`) |
 | `timeout` / `gtimeout` | coreutils; absent | background the command and poll with a kill guard |
+| `"${arr[@]}"` of an **empty** array under `set -u` | bash < 4.4: "unbound variable" | guard with `[ "${#arr[@]}" -gt 0 ]` |
+| `touch -d <str>` | GNU only | `find -mmin`/`-newer` against a known file, or epoch arithmetic |
 
 Two properties make this class expensive out of proportion to its triviality: the failure
 is *total* rather than partial, and it is invisible to the author's own testing. Check any

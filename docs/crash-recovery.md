@@ -20,13 +20,22 @@ back at their own plan docs, not reconstructing lost work.
 ## Order of operations
 
 1. **Orient before acting.** Read your own inbox and branch plan; the plan doc
-   is the fleet roster and landing-queue state as of the last `/save`. Check
-   `tmux ls` (usually empty after a reset), `git worktree list`, and
-   `~/.cache/claude-attention/` (markers show who was blocked at crash time).
-2. **Diagnose the crash** from the watchdog evidence (its logs / archived
-   snapshots) so the relaunch doesn't immediately re-trigger it. Memory-thrash
-   from concurrent heavy builds is a recurring cause; if that was it, stagger the
-   relaunch and enforce one-heavy-build-at-a-time.
+   is the fleet roster and landing-queue state as of the last `/save` (it may be
+   weeks stale). Check `tmux ls` (usually empty after a reset) and
+   `git worktree list`. The most reliable record of **which sessions were alive
+   at crash time** is the agents' own transcripts: every live session writes to
+   its transcript continuously, so the transcripts modified in the last hours
+   before the crash are the live roster (`recover-agents.sh --live-within <minutes>
+   --dry-run` lists them). Attention markers only show agents that were blocked.
+2. **Diagnose the crash** with the watchdog's runbook, in its order: the last
+   heartbeat tick bounds when userspace stopped, then the last few health
+   snapshots, then the prior boot's journal for that window. Check every
+   timestamp: `journalctl -b -1` can include events from hours or days earlier
+   (an OOM kill the evening before is not the crash). A memory-exhaustion
+   livelock often has **no** OOM kill at all, just load climbing into the
+   hundreds and the journal going silent. Then archive the pre-crash logs with
+   your findings before the monitors are restarted (they rotate). Memory thrash
+   is the recurring cause; if that was it, see "Capacity" below.
 3. **Classify every worktree** into restart / do-not-restart (next section).
 4. **Repair any corrupted worktree wiring** (see "Worktree corruption") *before*
    launching — a session started in a broken worktree wastes a launch.
@@ -59,6 +68,22 @@ status line — squashed-and-delivered is unmistakable once you look. **Confirm 
 ambiguous model assignments with the user** rather than guessing; model choice
 is a real cost/quality lever.
 
+## Capacity: restore fewer sessions than were running
+
+If the crash was memory exhaustion, the fleet that was running is, by definition,
+more than the machine holds. Don't restore it whole, even staggered:
+
+- Agent sessions are the base load. Long-lived ones grow (on one fleet, sessions
+  45–113 days old used 0.5–1.1 GB each against ~0.3 GB fresh), so a fleet that
+  fit at first can fill RAM and swap over weeks with no single culprit.
+- Restore in batches by priority (`recover-agents.sh --max N`), checking
+  `free -h` between batches, and stop while there is clear headroom for one heavy
+  build on top (several GB).
+- Many restored agents will find their work squashed and delivered and stop on
+  their own; count them out of the working set.
+- Make sure heavy builds are gated on available memory, not only serialized
+  (`lib-mem-check.sh`), and that the monitor's alerts reach you (below).
+
 ## Model assignments
 
 Each agent's model is recorded (or derivable) from its role, per
@@ -73,8 +98,14 @@ agent's *previous* model across the restart — don't silently upgrade or downgr
 
 Restoration is **not** a fresh spawn: the worktree, branch, plan doc, and inbox
 already exist, so `bin/spawn-issue-worktree.sh` (which creates a *new* branch off
-`origin/main`) is the wrong tool. Just start a tmux session in the existing
-worktree and run the agent in it:
+`origin/main`) is the wrong tool. Use `bin/recover-agents.sh` with an explicit
+selection: `--roster FILE` (lines of `<worktree> [model]`) or `--live-within
+<minutes>`, plus `--max N`, `--prompt "<wake-up prompt>"` and `--dry-run` first.
+It names sessions exactly as spawn does (so a later run never duplicates them),
+reuses each agent's model from its last transcript, and sends the prompt with
+the split-Enter technique below. Run with no selection it considers every issue
+worktree, which is rarely what you want after a memory crash. What it does per
+session, if you need to do it by hand:
 
 ```bash
 tmux new-session -d -s "<wt>" -c "<worktree-path>"
@@ -172,8 +203,25 @@ Repair carefully — this is surgery on live git state:
 Never let an individual agent self-repair its own worktree wiring — corruption is
 easy to make worse. Centralize it in staging.
 
+Two quieter kinds of rot are worth a sweep while you're here:
+
+- **Orphaned coordinator folders.** A renamed or retired coordinator worktree
+  can leave its directory behind holding only `claude-hydra-messages/`. Agents
+  and monitors that still name the old coordinator keep delivering there and
+  nobody reads it. List `worktrees/*/` entries that are not git worktrees but
+  have an inbox; move their contents into the live coordinator's inbox archive,
+  triage anything unanswered, and remove the folder.
+- **Stale hook paths.** Per-worktree `.claude/settings.json` files written
+  before a harness move can point at scripts that no longer exist (e.g.
+  `../../agents/bin/...` after the harness moved under `external/`). The agent
+  still runs, but silently loses its inbox, stop and decision hooks. Grep the
+  settings files for the old path and rewrite it.
+
 ## After the fleet is back
 
+- **Check that the monitor reaches you.** Look for a fresh liveness note from
+  the machine's watchdog in *your* inbox. If there has never been one, its
+  messages are going somewhere else; find out where before you rely on it.
 - Post a hold/status note on the cross-machine coordination channel so a sibling
   staging agent knows this machine is back.
 - Watch `~/.cache/claude-attention/` for agents that come up blocked.

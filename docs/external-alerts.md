@@ -84,7 +84,24 @@ and the evidence, not for a fixed schema.
    channel** — nothing on the other side will see or act on an acknowledgement.
    Record what you did in your own transcript/archive if it matters; don't block
    waiting for a monitor to respond.
-4. **Investigate via the evidence the alert points to,** not by asking the
+4. **Tell the tiers apart.** A monitor may send two kinds of resource alert:
+   - **acute**: the machine is minutes from a livelock. It may arrive as text
+     typed into your session as well as an inbox file. Act now: find what is
+     growing (`ps -eo pid,rss,etime,args --sort=-rss | head`), pause or stop the
+     heavy build before its next memory-hungry stage, and don't let another heavy
+     build start until memory recovers.
+   - **chronic**: resources have been high for a while but nothing is stalling.
+     This is a capacity problem: reduce the standing load (fewer live sessions;
+     restart sessions that have run for weeks, since they grow to 2–3× a fresh
+     one) before the next heavy build, rather than reacting to each message.
+5. **Gate heavy work on headroom, not just on a lock.** A build slot that only
+   serializes builds will still hand the slot to a build on a machine with no
+   room left. Check available memory before a heavy build starts (the
+   `lib-mem-check.sh` guard does this inside a slot wrapper), and when you see a
+   heavy build acquire the slot, glance at `free -h` yourself. On 2026-10-30 the
+   coordinator saw a Haskell sync take the slot with swap ~93% full, judged it
+   "exactly as planned", and the machine froze 45 minutes later.
+6. **Investigate via the evidence the alert points to,** not by asking the
    sender. An external monitor generally leaves its logs and history on disk (the
    message should say where). Treat that as the authoritative detail behind the
    one-line alert.
@@ -115,7 +132,12 @@ one check cycle. So:
 
 1. **A fresh heartbeat means all-clear** for that machine's monitor — note it and
    move on; reading or archiving it is optional (a newer one replaces it).
-2. **A stale or missing heartbeat is the condition to respond to.** If the newest
+2. **A stale or missing heartbeat is the condition to respond to** — and
+   *missing* includes "never arrived". If you know a machine runs a monitor but
+   your inbox has no liveness note from it at all, its messages are going
+   somewhere else: find out where. On 2026-10-30 a coordinator's heartbeats (and
+   288 danger alerts) had been delivered for four weeks to a leftover folder of a
+   renamed worktree, and nobody noticed the silence. If the newest
    liveness note has aged past its stated threshold, treat the monitored machine
    as possibly dead or frozen: check whether it is reachable, and whether its logs
    end on a freeze signature. This is exactly the freeze the monitoring exists to
