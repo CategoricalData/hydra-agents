@@ -159,6 +159,28 @@ for hook in inbox-hook.sh notification-hook.sh stop-hook.sh proposals-hook.sh de
     fi
 done
 cp "$HOOKS_DIR/template-settings.json" "$WT/.claude/settings.json"
+# The template's hook commands assume the checkout at <project>/agents/ (a peer of
+# worktrees/), i.e. "$CLAUDE_PROJECT_DIR"/../../agents/. Projects that consume
+# hydra-agents elsewhere (Hydra: <project>/external/agents/) would otherwise get hooks
+# that point at nothing: every spawned agent silently loses its inbox/stop/decision
+# hooks (seen 2026-10-30 in 22 worktrees plus every new spawn). Rewrite the prefix to
+# where HOOKS_DIR really is: relative to the worktree when the checkout is under the
+# same project root, else absolute. Plain sed + mv (portable; no sed -i, no python).
+_proj_root="$(cd "$WT/../.." && pwd)"
+_agents_abs="$(cd "$HA_AGENTS_DIR" && pwd)"
+case "$_agents_abs" in
+    "$_proj_root"/*) _agents_ref="../../${_agents_abs#"$_proj_root"/}" ;;
+    *)               _agents_ref="$_agents_abs" ;;
+esac
+if [ "$_agents_ref" != "../../agents" ]; then
+    _tmp="$WT/.claude/settings.json.tmp.$$"
+    sed "s#\.\./\.\./agents/bin/claude-hooks#${_agents_ref}/bin/claude-hooks#g" \
+        "$WT/.claude/settings.json" > "$_tmp" && mv -f "$_tmp" "$WT/.claude/settings.json"
+fi
+if grep -q '\.\./\.\./agents/bin/claude-hooks' "$WT/.claude/settings.json" && [ "$_agents_ref" != "../../agents" ]; then
+    echo "error: failed to point settings.json hooks at $_agents_ref" >&2
+    exit 1
+fi
 
 # Sandbox permission bypass (see docs/sandbox-permissions.md). The template
 # deliberately does NOT carry defaultMode: bypassPermissions — that would leak
