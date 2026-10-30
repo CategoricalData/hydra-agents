@@ -158,42 +158,55 @@ two files, and exits. This is deliberate: a watchdog that ran a live agent to
 send alerts would be exactly the kind of memory/context consumer it exists to
 catch. See "Where Claude fits in" below.
 
-**Trigger** (in `health-monitor.sh`, tuned from the 2026-07-08 freeze where swap
-hit 100% and PSI mem-stall reached 74%): fire when **swap used ≥ 90%** *or*
-**PSI memory `some avg10` ≥ 40%** — earlier than the freeze point, so the alert
-buys reaction time.
+**Two tiers** (in `health-monitor.sh`):
+
+- **acute**: PSI memory `some avg10` ≥ 40%, *or* `full avg10` ≥ 10%, *or* swap
+  ≥ 95% **and** MemAvailable < 2 GiB. RAM and swap both nearly gone is the
+  precursor of the livelock: from there, one more memory-hungry build step takes
+  the box from responsive to frozen in about two minutes (2026-10-30). Replaying
+  the health log, this fired 0–4 times a day in normal operation and 15, 52 and
+  38 times on the three days up to that freeze.
+- **chronic**: swap ≥ 90% on its own. A fleet of long-lived agent sessions can
+  sit there for weeks without stalling, so this is a capacity warning, sent as a
+  digest **at most once a day**. (As a single tier firing every 15 minutes it
+  produced 288 alerts in 27 days, which nobody can act on.)
 
 **What it does** (`alert-staging.sh`):
 
-1. **Resolves the staging worktree dynamically.** The per-machine staging agent's
-   name always begins with `staging` but is not always `staging-gce`, so the
-   script globs `…/hydra/worktrees/staging*/` rather than hard-coding a path.
-2. **Writes an advisory message** into that agent's
-   `claude-hydra-messages/inbox/` using the Hydra filename convention
-   (`<UTC>-watchdog-alpha-memory-pressure.md`). The staging agent's inbox hook
-   surfaces it on its next turn — **staging** is the agent; the watchdog is not.
-   The message names the leading top-RSS offender and recommends preventive
-   action (throttle/pause the Haskell build workers), but leaves the decision to
-   staging — the watchdog observes and warns, it never remediates.
-3. **Drops an attention-marker** at
-   `~/.cache/claude-attention/watchdog-alpha-memory-pressure.txt` — the urgent
-   out-of-band channel the user and staging already watch — because a freeze is
-   disruptive enough to interrupt, not just wait for staging's next prompt.
-4. **De-bounces.** At most one alert per 15-minute cooldown (a stamp file at
-   `logs/.last-staging-alert`), so a sustained squeeze produces a few alerts,
-   not hundreds. This is what keeps alerts *infrequent*.
+1. **Finds the coordinator** via `lib-coordinator.sh` (shared with the liveness
+   heartbeat): an explicit `WATCHDOG_STAGING_DIR` wins; otherwise only **real git
+   worktrees** named `staging*` with a writable inbox qualify, and an exact
+   `staging` beats prefixed names. A leftover non-worktree folder that still has
+   an inbox is ignored and *named* in the message and marker. From 2026-10-03 to
+   2026-10-30 every alert went to such a folder (`staging-gce/`, left behind by a
+   rename, sorts before `staging/`), so nothing ever read them.
+2. **Writes an advisory message** into the coordinator's inbox
+   (`<UTC>-watchdog-<host>-memory-pressure-<tier>.md`), naming the leading
+   top-RSS process and a recommended action. The coordinator decides; the
+   watchdog never remediates.
+3. **Acute only: wakes the coordinator.** It types a one-line notice into the
+   tmux session whose pane sits in the coordinator worktree (or
+   `WATCHDOG_WAKE_TMUX_SESSION`). An inbox message alone is only seen on the
+   agent's *next* turn, and an idle coordinator may not have one for an hour.
+   `WATCHDOG_WAKE=0` disables this.
+4. **Drops an attention marker** for the user:
+   `~/.cache/claude-attention/watchdog-<host>-memory-pressure.txt` (acute) or
+   `…-chronic.txt` (so a digest never hides a recent acute warning).
+5. **De-bounces per tier:** acute at most every 10 minutes
+   (`ACUTE_COOLDOWN_SECS`), chronic at most daily (`CHRONIC_COOLDOWN_SECS`).
+
+The watchdog only warns. Prevention at the source is a memory gate on heavy
+builds: see `bin/lib-mem-check.sh` (a build-slot wrapper waits for headroom
+before letting a build start).
 
 **No reply channel, by design.** The watchdog has no inbox because it has no
 reader — removing Claude from the watchdog side means there is nobody here to
 poll for or act on a response. Staging acts (or not) at its discretion; if a
 human wants to know what staging did, that lives in staging's own transcript and
-message archive, not here. (An earlier design gave the watchdog its own inbox so
-staging could reply — but reading a reply implies either a polling loop or a
-standing session, both of which reintroduce the accumulation we are avoiding, so
-the inbox was dropped.)
+message archive, not here.
 
-To change the thresholds or cooldown, edit the danger-check block at the bottom
-of `bin/health-monitor.sh` and `COOLDOWN_SECS` in `bin/alert-staging.sh`.
+To change thresholds, edit the danger-check block in `bin/health-monitor.sh`;
+cooldowns are env-overridable in `bin/alert-staging.sh`.
 
 ## Liveness heartbeat to staging (dead-man's switch)
 
@@ -219,6 +232,10 @@ agent's inbox. The contract:
   inbox holds exactly one liveness note whose freshness is the whole point, not
   ~144 files a day. Unlike a danger-alert it drops **no attention-marker**: a
   routine beat must not cry wolf.
+- **No note at all counts as stale.** If the coordinator's inbox has *never*
+  had a liveness note, that is not "nothing to report": the heartbeat is going
+  somewhere else. On 2026-10-30 it had been delivered to an orphaned folder for
+  four weeks and the coordinator never noticed the absence.
 - **Tied to the collector it vouches for.** Because the heartbeat rides
   `health-monitor.sh`, it stops precisely when that collector stops (crash,
   freeze, or the units being stopped) — which is exactly when staging should

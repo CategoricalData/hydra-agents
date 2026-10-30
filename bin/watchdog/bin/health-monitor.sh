@@ -99,31 +99,49 @@ sync -d "$LOG" 2>/dev/null
 sync -d "$LOG" 2>/dev/null || sync
 
 # ----------------------------------------------------------------------------
-# Danger check → alert the staging-gce agent (advisory only; never remediate).
-# Thresholds chosen from the 2026-07-08 freeze: swap hit 100%, PSI mem-stall
-# some-avg10 reached 74% at the last complete snapshot. We fire EARLIER than
-# that — while there's still headroom to act. alert-staging.sh de-bounces, so
-# this staying true every tick during a squeeze does not spam.
-#   Trigger:  swap used >= 90%  OR  PSI memory some-avg10 >= 40%
+# Danger check → alert the coordinator (advisory only; never remediate).
+# Two tiers, calibrated by replaying ~2 weeks of this log before the 2026-10-30
+# freeze:
+#   acute    PSI memory some-avg10 >= 40%, OR full-avg10 >= 10%, OR
+#            (swap >= 95% AND MemAvailable < 2 GiB).
+#            RAM and swap both nearly gone is the livelock precursor. Fired 0-4
+#            times/day in normal operation, then 15, 52 and 38 in the ~2 days
+#            before the freeze.
+#   chronic  swap >= 90% alone. The fleet's resident set sits there for weeks;
+#            alerting on it every 15 minutes produced 288 ignorable alerts in
+#            27 days, so it is now a once-a-day digest.
+# alert-staging.sh de-bounces each tier separately and wakes the coordinator's
+# tmux session for acute alerts.
 # ----------------------------------------------------------------------------
 ALERT="$_HM_DIR/alert-staging.sh"
 if [ -x "$ALERT" ]; then
-  # swap used % (integer); 0 if no swap configured
   swap_pct=$(free | awk '/^Swap:/ { if ($2>0) printf "%d", ($3*100)/$2; else print 0 }')
   [ -z "$swap_pct" ] && swap_pct=0
-  # PSI memory some-avg10 (integer part); 0 if unavailable
+  mem_avail=$(free -m | awk '/^Mem:/ {print $7}')
+  [ -z "$mem_avail" ] && mem_avail=999999
+  # PSI memory some/full avg10 (integer parts); 0 if unavailable
   psi_mem=$(awk '/^some/ { for(i=1;i<=NF;i++) if($i ~ /^avg10=/){split($i,a,"=");print int(a[2]);exit} }' \
               /proc/pressure/memory 2>/dev/null)
   [ -z "$psi_mem" ] && psi_mem=0
+  psi_full=$(awk '/^full/ { for(i=1;i<=NF;i++) if($i ~ /^avg10=/){split($i,a,"=");print int(a[2]);exit} }' \
+              /proc/pressure/memory 2>/dev/null)
+  [ -z "$psi_full" ] && psi_full=0
 
-  if [ "$swap_pct" -ge 90 ] || [ "$psi_mem" -ge 40 ]; then
-    mem_avail=$(free -m | awk '/^Mem:/ {print $7}')
+  tier=""
+  if [ "$psi_mem" -ge 40 ] || [ "$psi_full" -ge 10 ] || { [ "$swap_pct" -ge 95 ] && [ "$mem_avail" -lt 2048 ]; }; then
+    tier=acute
+  elif [ "$swap_pct" -ge 90 ]; then
+    tier=chronic
+  fi
+
+  if [ -n "$tier" ]; then
     pblocked=$(awk '/^procs_blocked/ {print $2}' /proc/stat)
     top_rss=$(ps -eo pid,user,pcpu,rss,etime,comm --sort=-rss --no-headers 2>/dev/null | head -1 \
                 | awk '{printf "pid=%s user=%s cpu=%s%% rss=%dMB elapsed=%s comm=%s", $1,$2,$3,$4/1024,$5,$6}')
-    reason="swap${swap_pct}-psi${psi_mem}"
-    summary="swap ${swap_pct}% used, mem-avail ${mem_avail}MB, procs_blocked ${pblocked}, PSI mem-stall(avg10) ${psi_mem}%"
-    "$ALERT" "$reason" "$summary" "$top_rss" >/dev/null 2>&1 || true
+    sessions=$(pgrep -c -x claude 2>/dev/null || echo 0)
+    reason="swap${swap_pct}-avail${mem_avail}-psi${psi_mem}/${psi_full}"
+    summary="swap ${swap_pct}% used, mem-avail ${mem_avail}MB, PSI mem some/full(avg10) ${psi_mem}%/${psi_full}%, procs_blocked ${pblocked}, claude sessions ${sessions}"
+    "$ALERT" "$reason" "$summary" "$top_rss" "$tier" >/dev/null 2>&1 || true
   fi
 fi
 
