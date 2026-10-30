@@ -320,8 +320,12 @@ tmux send-keys -t "${SESSION}" "claude-remote -m ${SPAWN_MODEL}" Enter
 # bypass-mode confirmation, both of which DEFAULT TO "No, exit". Typing the
 # trigger into one of those dialogs answers it instead of prompting the agent.
 # Poll for the input line, and surface the dialog rather than blundering into it.
+# The footer text changes between Claude Code versions ("? for shortcuts" up to
+# 2.1.2xx; "(shift+tab to cycle)" / "bypass permissions on" in 2.1.314), so
+# accept any known one. SPAWN_READY_TIMEOUT (default 90s): the first launch after
+# a CLI update shows a changelog and starts noticeably slower.
 _ready=""
-for _i in $(seq 1 40); do
+for _i in $(seq 1 "${SPAWN_READY_TIMEOUT:-90}"); do
     _pane="$(tmux capture-pane -p -t "${SESSION}" 2>/dev/null || true)"
     case "$_pane" in
         *"trust this folder"*|*"Yes, I accept"*)
@@ -334,12 +338,12 @@ for _i in $(seq 1 40); do
             ;;
     esac
     case "$_pane" in
-        *"for shortcuts"*) _ready=1; break ;;
+        *"for shortcuts"*|*"shift+tab to cycle"*|*"bypass permissions on"*) _ready=1; break ;;
     esac
     sleep 1
 done
 if [ -z "$_ready" ]; then
-    echo "error: agent TUI did not become ready within 40s — attach and check:" >&2
+    echo "error: agent TUI did not become ready within ${SPAWN_READY_TIMEOUT:-90}s — attach and check:" >&2
     echo "         tmux attach -t ${SESSION}" >&2
     exit 1
 fi
