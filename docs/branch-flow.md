@@ -424,3 +424,10 @@ There is **one staging agent per machine**, and all of them push to the same
    rather than wait. See [`external-alerts.md`](external-alerts.md) for what these
    alerts (and heartbeats) look like, how to tell one from a peer message, and the
    escalation ladder for a ceased heartbeat.
+6. **Quota pacing.** Near a weekly quota reset, staging decides whether the fleet
+   spends spare quota on extra work, and it winds that work down before the limit.
+   Run [`bin/quota/quota-check.sh`](../bin/quota/quota-check.sh) on a cadence and
+   act on its verdict (`go`, `hold`, `ease`, `stop`); keep a `--watch` job running
+   so that an idle staging session is woken when the verdict changes. Other agents
+   check only for the `STOP` file. See [`quota-pacing.md`](quota-pacing.md),
+   including how several fleets share one account.
