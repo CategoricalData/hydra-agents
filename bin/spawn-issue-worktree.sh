@@ -348,10 +348,26 @@ if [ -z "$_ready" ]; then
     exit 1
 fi
 
-# send a follow-up Enter — paste-detection occasionally eats the first.
-tmux send-keys -t "${SESSION}" "Please complete the ${GUIDE} startup procedure and address any pending inbox messages." Enter
-sleep 3
-tmux send-keys -t "${SESSION}" Enter
+# Send the startup trigger, then CONFIRM it was submitted. The footer can appear before the
+# input box accepts keystrokes (seen on Claude Code 2.1.314), and paste-detection often eats an
+# Enter sent in the same send-keys as the text, so: settle, send text and Enter separately, then
+# re-send Enter until the agent is visibly working (or the prompt line has cleared).
+sleep 5
+tmux send-keys -t "${SESSION}" "Please complete the ${GUIDE} startup procedure and address any pending inbox messages."
+sleep 1
+_submitted=""
+for _i in 1 2 3 4 5; do
+    tmux send-keys -t "${SESSION}" Enter
+    sleep 3
+    _pane="$(tmux capture-pane -p -t "${SESSION}" 2>/dev/null || true)"
+    case "$_pane" in
+        *"esc to interrupt"*) _submitted=1; break ;;
+    esac
+    printf '%s\n' "$_pane" | grep -q '❯ Please complete' || { _submitted=1; break; }
+done
+if [ -z "$_submitted" ]; then
+    echo "warning: startup prompt may still be unsent — check: tmux capture-pane -p -t ${SESSION} | tail" >&2
+fi
 
 echo ""
 echo "============================================================"
