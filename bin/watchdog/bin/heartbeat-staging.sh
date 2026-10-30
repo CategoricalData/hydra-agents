@@ -25,7 +25,9 @@
 
 set -u
 
-WT_ROOT="/home/josh/projects/github/CategoricalData/hydra/worktrees"
+_HB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-coordinator.sh
+. "$_HB_DIR/lib-coordinator.sh"
 WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-$HOME/watchdog/logs}"
 INTERVAL_STAMP="$WATCHDOG_STATE_DIR/.last-staging-heartbeat"
 SEND_INTERVAL_SECS=600   # 10 min send cadence (staging alarms at >15 min silence)
@@ -45,42 +47,17 @@ if [ -f "$INTERVAL_STAMP" ]; then
   fi
 fi
 
-# --- resolve the staging worktree by glob (name starts with "staging") ---
-# Only accept a candidate whose inbox actually EXISTS and is WRITABLE — a stale or
-# unwritable match must not be chosen, since delivering there would silently fail.
-# (The prior form took the first staging*/ dir even without a usable inbox, which
-# could send beats to a wrong/unwritable path. See the fleet-monitor issue.)
-#
-# PREFERRED TARGET: the glob can match several staging*/ worktrees (e.g. staging-gce
-# AND staging-fix). Alphabetical-first is NOT necessarily the LIVE coordinator —
-# delivering to the wrong one leaves the live coordinator's liveness note stale and
-# produces false STALE alerts (observed: beats went to staging-fix/ while staging-gce/
-# — the live coordinator — went stale ~35h). So honor an explicit config value for the
-# live staging worktree, and only fall back to the glob when it is unset/unusable.
-# WATCHDOG_STAGING_DIR is the machine-specific coordinator name (e.g. "staging-gce");
-# keeping it in config, not hardcoded, is the whole point of the #583 harness split.
-staging_dir=""
-staging_matches=0
-if [ -n "${WATCHDOG_STAGING_DIR:-}" ]; then
-  preferred="$WT_ROOT/${WATCHDOG_STAGING_DIR%/}/"
-  if [ -d "${preferred}claude-hydra-messages/inbox" ] && [ -w "${preferred}claude-hydra-messages/inbox" ]; then
-    staging_dir="$preferred"
-  else
-    echo "heartbeat-staging: WATCHDOG_STAGING_DIR=$WATCHDOG_STAGING_DIR has no writable inbox; falling back to glob" >&2
-  fi
-fi
-for d in "$WT_ROOT"/staging*/; do
-  [ -d "$d" ] || continue
-  staging_matches=$((staging_matches + 1))
-  if [ -z "$staging_dir" ] && [ -d "${d}claude-hydra-messages/inbox" ] && [ -w "${d}claude-hydra-messages/inbox" ]; then
-    staging_dir="$d"
-  fi
-done
-[ -z "$staging_dir" ] && exit 0   # no staging worktree with a writable inbox; nothing to do
-if [ "$staging_matches" -gt 1 ]; then
-  echo "heartbeat-staging: note — $staging_matches staging*/ worktrees; using $staging_dir" >&2
-fi
-staging_inbox="${staging_dir}claude-hydra-messages/inbox"
+# --- resolve the coordinator worktree (shared with alert-staging.sh) ---
+# lib-coordinator.sh honors WATCHDOG_STAGING_DIR, accepts only real git worktrees
+# with a writable inbox, prefers an exact `staging`, and reports anything odd in
+# WD_COORDINATOR_NOTE. (History: beats once went to staging-fix/ while the live
+# coordinator went stale for ~35h, and from 2026-10-03 to 2026-10-30 to a leftover
+# staging-gce/ folder that was no longer a worktree.)
+wd_resolve_coordinator_dir
+staging_dir="$WD_COORDINATOR_DIR"
+[ -z "$staging_dir" ] && exit 0   # no coordinator worktree with a writable inbox; nothing to do
+[ -n "$WD_COORDINATOR_NOTE" ] && echo "heartbeat-staging: $WD_COORDINATOR_NOTE" >&2
+staging_inbox="${staging_dir}${WATCHDOG_INBOX_SUBDIR}"
 staging_name=$(basename "$staging_dir")
 
 uptime_s=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
