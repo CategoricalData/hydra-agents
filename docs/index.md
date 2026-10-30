@@ -60,6 +60,11 @@ genuinely Claude-Code-specific mechanisms are labelled where they appear.
   in as a disposable sandbox, and the two enforcement points. (The bypass
   mechanism itself is Claude-Code-specific; the principle is not.)
 
+- **[quota-pacing.md](quota-pacing.md)** — spending spare subscription quota
+  before the weekly reset: the status-line reading, the go/hold/ease/stop
+  verdict, the coordinator's role (including waking an idle one), a target the
+  user can raise, and how several fleets share one account safely.
+
 ## Foundations and traps
 
 - **[worktree-workflow.md](worktree-workflow.md)** — the bare-repo + worktrees
