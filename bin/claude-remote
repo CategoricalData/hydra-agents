@@ -76,7 +76,11 @@ claude-remote() {
     bypass="--dangerously-skip-permissions"
   fi
   echo -ne "\033]0;Claude: $label\007"
-  CLAUDE_LABEL="$label" claude --remote-control "$label" --model "$model" $bypass "$@"
+  # Opt out of Claude Code's low-memory background-shell reaper: it kills agents' queued build
+  # waits (work that never started), and the build-lane wrapper already gates starts on memory
+  # headroom. It only takes effect if set at launch (Josh, Desk card 53, 2026-11-06).
+  CLAUDE_LABEL="$label" CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1 \
+    claude --remote-control "$label" --model "$model" $bypass "$@"
 }
 
 claude-remote "$@"
