@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# project-guard — write or verify a private project's checked-in isolation guard.
+#
+# Usage, from a worktree of the project:
+#   project-guard            # same as --check
+#   project-guard --check    # verify; exit 1 and list what's missing
+#   project-guard --write    # merge the guard into .claude/settings.json, then commit it
+#
+# A private repo carries its guard in its checked-in runner settings, so it travels
+# with every clone on every machine and can't be switched off locally. With Claude
+# Code: isolatePeerMachines: true, crossSessionInbound: privateInbound ("hold" by
+# default, or "refuse"), and a ListAgents deny. --write refuses for a public repo,
+# whose checked-in settings must not carry it (a sensitive machine guards public
+# repos in worktree-local settings instead). See docs/private-projects.md.
+
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/lib-config.sh"
+ha_load_config || exit 2
+. "$HERE/lib-runner.sh"
+ha_load_runner || exit 2
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "project-guard: run this from a worktree" >&2; exit 2; }
+
+case "${1:---check}" in
+    --check)
+        if ha_runner_check_project_guard "$root"; then
+            echo "project-guard: the checked-in guard is complete ($HA_VISIBILITY repo)."
+            exit 0
+        fi
+        [ "$HA_PRIVATE" = true ] && echo "project-guard: fix with: project-guard --write, then commit .claude/settings.json" >&2
+        exit 1
+        ;;
+    --write)
+        if [ "$HA_PRIVATE" != true ]; then
+            echo "project-guard: $HA_ISSUE_REPO is public; its checked-in settings must not carry the guard." >&2
+            echo "               (Set \"visibility\": \"private\" in hydra-agents.json if it is in fact private.)" >&2
+            exit 2
+        fi
+        ha_runner_write_project_guard "$root" || exit 1
+        ha_runner_check_project_guard "$root" >/dev/null 2>&1 || true
+        echo "project-guard: wrote the guard to $root/.claude/settings.json; now commit it and merge to main."
+        ;;
+    *)
+        sed -n '2,15p' "$0" >&2
+        exit 2
+        ;;
+esac

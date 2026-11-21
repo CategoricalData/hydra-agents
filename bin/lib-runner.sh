@@ -13,11 +13,18 @@
 #                                              this worktree (docs/cross-worktree-
 #                                              messages.md § Project isolation);
 #                                              non-zero means "do not launch"
+#   ha_runner_write_project_guard <root>       write a private repo's checked-in
+#                                              guard (the caller commits it)
+#   ha_runner_check_project_guard <root>       verify it; print problems, non-zero
+#                                              if any
 #   ha_runner_launch_cmd <session> <model> [--resume]
 #                                              print the command that starts the
 #                                              agent in its tmux pane, named <session>
 #   HA_RUNNER_DOORBELLS                        doorbell backends, best first
 #                                              (bin/lib-doorbell.sh)
+#   HA_RUNNER_GUARDED_DOORBELLS                backends for guarded sessions (a
+#                                              runner that holds inbound messages
+#                                              there lists only scripted ones)
 #   HA_RUNNER_PROCESS                          the agent's process name, used to
 #                                              detect a live agent in a worktree
 #
@@ -36,7 +43,8 @@ ha_load_runner() {
     fi
     # shellcheck disable=SC1090
     . "$f"
-    for fn in ha_runner_check_version ha_runner_prepare_worktree ha_runner_launch_cmd; do
+    for fn in ha_runner_check_version ha_runner_prepare_worktree ha_runner_launch_cmd \
+              ha_runner_write_project_guard ha_runner_check_project_guard; do
         if ! declare -F "$fn" >/dev/null; then
             echo "error: runner adapter $f does not define $fn." >&2
             return 1
