@@ -40,6 +40,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib-config.sh"
 ha_load_config   # errors out (exit 4/5) with guidance if no hydra-agents.json
+. "$HERE/lib-claude-version.sh"
+ha_check_claude_version   # warns (never fails) below the native-messaging minimum
 
 if [ -z "${COORDINATOR:-}" ]; then
     echo "error: \$COORDINATOR must be set (name the coordinator worktree, e.g. COORDINATOR=staging)" >&2
@@ -335,7 +337,13 @@ tmux select-pane     -t "${SESSION}" -T "${BRANCH}"
 # it is not (see docs/sandbox-permissions.md, "Enforcement points"). Passing
 # -b here forced bypass on every machine, including non-sandbox laptops --
 # which silently disabled permission deny rules for every spawned agent.
-tmux send-keys -t "${SESSION}" "claude-remote -m ${SPAWN_MODEL}" Enter
+#
+# -n names the Claude session after the tmux session, so other agents address it
+# with SendMessage by a deterministic name (docs/cross-worktree-messages.md).
+# The tmux session name is already unique on this machine and project-qualified.
+# An older claude-remote without -n forwards it to `claude`, which takes the same
+# flag, so this works with either.
+tmux send-keys -t "${SESSION}" "claude-remote -m ${SPAWN_MODEL} -n ${SESSION}" Enter
 
 # Wait for the agent TUI to actually be ready before sending the trigger.
 # A fixed sleep is not enough: startup can stop on a folder-trust prompt or a
@@ -397,6 +405,7 @@ echo "Spawned ${BRANCH}:"
 echo "  worktree: $WT"
 echo "  branch:   $BRANCH"
 echo "  tmux:     tmux attach -t ${SESSION}"
+echo "  session:  ${SESSION}   (SendMessage address)"
 echo ""
 echo "Watch attention markers from coordinator:"
 echo "  ls -la ~/.cache/claude-attention/"
