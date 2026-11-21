@@ -25,13 +25,17 @@
 # Models: a roster line's model wins; otherwise the model of the worktree's most
 # recent Claude transcript is reused, so a restart never silently changes an
 # agent's model (claude-remote's own default would). Session names match
-# spawn-issue-worktree.sh (HA_SESSION_PREFIX + name); existing sessions are
-# skipped, never duplicated. See docs/crash-recovery.md.
+# spawn-issue-worktree.sh (HA_SESSION_PREFIX + name), and each Claude session is
+# named after its tmux session (--name), so its SendMessage address is the same
+# as before the crash. Existing sessions are skipped, never duplicated; so is a
+# worktree where a `claude` process is still running under some other session
+# name (reported, for a human to retire). See docs/crash-recovery.md.
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib-config.sh"
+. "$HERE/lib-claude-version.sh"
 
 WORKTREES_DIR="${HA_WORKTREES_DIR:-${HOME}/projects/github/CategoricalData/hydra/worktrees}"
 TRANSCRIPTS_DIR="${HOME}/.claude/projects"
@@ -49,6 +53,8 @@ while [ $# -gt 0 ]; do
     *) echo "error: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+ha_check_claude_version   # warns (never fails) below the native-messaging minimum
 
 if [ ! -d "$WORKTREES_DIR" ]; then
   echo "error: $WORKTREES_DIR not found" >&2
@@ -69,6 +75,25 @@ session_name_for() {
     [ -z "$default_model" ] && default_model="${HA_SPAWN_MODEL:-}"
   fi
   printf '%s%s' "$prefix" "$sess_branch"
+}
+
+# PIDs of `claude` processes whose working directory is $1. A live one means the
+# worktree's agent survived (or was relaunched by hand) under a session name this
+# script doesn't know: launching another would give two agents one worktree, and
+# two sessions one SendMessage name. Linux reads /proc; elsewhere lsof, if present.
+claude_pids_in() {
+  local dir pid
+  dir="$(cd "$1" && pwd -P)" || return 0
+  if [ -d /proc/self ]; then
+    for pid in $(pgrep -x claude 2>/dev/null); do
+      [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$dir" ] && printf '%s ' "$pid"
+    done
+  elif command -v lsof >/dev/null 2>&1; then
+    for pid in $(pgrep -x claude 2>/dev/null); do
+      lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep -qx "n$dir" && printf '%s ' "$pid"
+    done
+  fi
+  return 0
 }
 
 # Claude Code stores a worktree's transcripts under a directory named after its
@@ -120,6 +145,8 @@ for c in "${candidates[@]}"; do
   session="$(session_name_for "$wt_path" "$wt")"
   # `=` forces exact-name matching (tmux otherwise prefix-matches — hydra-agents#1).
   if tmux has-session -t "=$session" 2>/dev/null; then skipped+=("$session (already running)"); continue; fi
+  pids="$(claude_pids_in "$wt_path")"
+  if [ -n "$pids" ]; then skipped+=("$session (claude already running in $wt: pid ${pids% }; retire it or rename its tmux session to $session)"); continue; fi
   [ -z "$model" ] && model="$(model_from_transcript "$wt_path")"
   [ -z "$model" ] && model="${default_model:-opus}"
   if [ "${#launched[@]}" -ge "$max" ]; then deferred+=("$wt $model"); continue; fi
@@ -129,7 +156,9 @@ for c in "${candidates[@]}"; do
   tmux new-session -d -s "$session" -c "$wt_path"
   tmux set-window-option -t "=$session:" automatic-rename off 2>/dev/null || true
   tmux rename-window -t "=$session:" "$wt" 2>/dev/null || true
-  tmux send-keys -t "=$session:" "claude-remote $session -m $model --continue" Enter
+  # -n: the session keeps its pre-crash SendMessage address (an older claude-remote
+  # forwards -n to claude, which takes the same flag).
+  tmux send-keys -t "=$session:" "claude-remote $session -m $model -n $session --continue" Enter
   if [ -n "$prompt" ]; then
     sleep 10   # let the TUI come up; the first launch after a CLI update is slower
     # Text and Enter separately, then an insurance Enter: the TUI's paste
