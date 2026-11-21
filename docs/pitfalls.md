@@ -137,10 +137,11 @@ don't pick rows from a listing.
 `SendMessage` returns success once the message is in the recipient's queue, not once it has been
 read. The recipient may hold it for approval instead of delivering it: usually when the sender
 runs in a different permission mode, and always (in bypass mode) when the sender is a script
-rather than another session. A held doorbell is a lost doorbell until a human approves it, so
-read the send result and run `bin/doorbell <branch> <file> --fallback` when it says held or
-refused. The inbox file
-is unaffected either way: it is the message, and it waits.
+rather than another session, or when the recipient sets `crossSessionInbound: "hold"`. The send
+result does not say so: it reports success, and a separate `[Cross-session delivery notice]`
+arrives later (held, then released, denied, or expired). A held doorbell is a lost doorbell
+until a human approves it, so on that notice run `bin/doorbell <branch> <file> --fallback`. The
+inbox file is unaffected either way: it is the message, and it waits.
 
 ## Shell-tool mechanics (substrate-specific)
 

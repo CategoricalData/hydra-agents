@@ -36,7 +36,7 @@ ha_doorbell_claude-sendmessage() {
 doorbell: send this with your SendMessage tool (backend claude-sendmessage):
   to:      $1
   message: $3
-If the send fails, or its result says the message was held or refused, rerun
+If the send fails, or a later [Cross-session delivery notice] says it was held or refused, rerun
 this command with --fallback to ring the tmux doorbell instead.
 EOF
     return 0

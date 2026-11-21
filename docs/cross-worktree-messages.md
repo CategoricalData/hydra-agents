@@ -232,10 +232,12 @@ address; spawn and recovery warn when the installed CLI is older than v2.1.224.
 
 - A send by name works with `ListAgents` denied (verified on v2.1.314), so agents never need to
   list sessions.
-- **Read the send result.** It reports success once the message is in the recipient's queue, not
-  once it is read. If it says the message was held (usually because the two sessions run in
-  different permission modes) or refused, or the send fails, run `bin/doorbell <branch> <file>
-  --fallback` to ring tmux.
+- **Watch for a delivery notice.** The send result reports success once the message is in the
+  recipient's queue, not once it is read. If the recipient holds it (usually because the two
+  sessions run in different permission modes, or it is guarded) or refuses it, a separate
+  `[Cross-session delivery notice]` arrives afterwards; a held message that nobody approves later
+  expires undelivered. On such a notice, or a failed send, run `bin/doorbell <branch> <file>
+  --fallback` to ring tmux. Don't resend natively while the modes differ: it is only held again.
 - Rapid bursts are refused and the recipient's queue holds 50 messages, so ring once per file, not
   in loops.
 
