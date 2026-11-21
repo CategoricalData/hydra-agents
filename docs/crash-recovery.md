@@ -101,7 +101,9 @@ already exist, so `bin/spawn-issue-worktree.sh` (which creates a *new* branch of
 `origin/main`) is the wrong tool. Use `bin/recover-agents.sh` with an explicit
 selection: `--roster FILE` (lines of `<worktree> [model]`) or `--live-within
 <minutes>`, plus `--max N`, `--prompt "<wake-up prompt>"` and `--dry-run` first.
-It names sessions exactly as spawn does (so a later run never duplicates them),
+It names sessions exactly as spawn does (so a later run never duplicates them, and
+each agent keeps its `SendMessage` address), skips a worktree whose `claude` still
+runs, warns if Claude Code is older than v2.1.224,
 reuses each agent's model from its last transcript, and sends the prompt with
 the split-Enter technique below. Run with no selection it considers every issue
 worktree, which is rarely what you want after a memory crash. What it does per
@@ -111,7 +113,7 @@ session, if you need to do it by hand:
 tmux new-session -d -s "<wt>" -c "<worktree-path>"
 tmux set-window-option -t "<wt>" automatic-rename off
 tmux rename-window -t "<wt>" "<wt>"
-tmux send-keys -t "<wt>" "claude-remote <label>-<wt> -b -m <model>" Enter
+tmux send-keys -t "<wt>" "claude-remote <session> -b -m <model> -n <session> --continue" Enter
 sleep 8                                   # let the TUI settle
 tmux send-keys -t "<wt>" "<wake-up prompt>" Enter
 sleep 3; tmux send-keys -t "<wt>" Enter   # insurance Enter (paste-detection eats the first)
@@ -119,9 +121,18 @@ sleep 3; tmux send-keys -t "<wt>" Enter   # insurance Enter (paste-detection eat
 
 `claude-remote` resolves on `PATH` (or as a shell function); a tmux pane runs an
 interactive shell so it resolves. `-b` = `--dangerously-skip-permissions`
-(sandboxed worktree), `-m` selects the model. Pass a stable label as the first
-positional arg so the remote-control handle is stable across restarts. (This
-launch is Claude-Code-specific; another framework substitutes its own launcher.)
+(sandboxed worktree), `-m` selects the model, `-n` sets the session name. Pass the
+tmux session name as both the label and the name: the Remote Control handle and the
+`SendMessage` address then stay the same across restarts, so peers reach the
+restored agent at the name they already use (see
+[cross-worktree-messages.md § Addressing](cross-worktree-messages.md#default-claude-codes-sendmessage)).
+(This launch is Claude-Code-specific; another framework substitutes its own launcher.)
+
+Before relaunching, make sure no `claude` is still running in the worktree under
+another session name (`recover-agents.sh` checks and skips such worktrees): a second
+launch would put two agents in one worktree. A crashed session's old Remote Control
+row may linger offline under the same name; it is harmless, and a human can remove it
+from claude.ai.
 
 **Verify submission**, don't assume it: `tmux capture-pane -t <wt> -p | tail`.
 The TUI's paste-detection frequently swallows the first Enter, leaving the
