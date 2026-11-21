@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# doorbell — tell a sibling agent that a message file is waiting in its inbox.
+#
+# Usage, from your own worktree, AFTER copy → verify → archive:
+#   doorbell <recipient-branch> <filename> [--fallback]
+#
+# Computes the recipient's session name from its branch (ha_session_name_for, the
+# same rule spawn and recovery use), so nothing is discovered by listing sessions.
+# Refuses to ring unless <filename> is present in the recipient's inbox: the file
+# is the message, and a doorbell without one points at nothing. Then tries the
+# configured doorbell backends in order (bin/lib-doorbell.sh): with Claude Code,
+# first SendMessage (printed for you to send, since it is a tool call), then tmux.
+# --fallback skips straight to the scripted backends, e.g. after a SendMessage
+# that failed or was held.
+#
+# Exit status: 0 rung (or instructions printed), 1 not rung, 2 usage/refused.
+# See docs/cross-worktree-messages.md.
+
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/lib-config.sh"
+ha_load_config || exit 2
+. "$HERE/lib-runner.sh"
+ha_load_runner || exit 2
+. "$HERE/lib-doorbell.sh"
+
+if [ $# -lt 2 ]; then
+    sed -n '2,17p' "$0" >&2
+    exit 2
+fi
+recipient_branch="$1" filename="$2" fallback="${3:-}"
+
+me="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "doorbell: run this from your own worktree" >&2; exit 2; }
+sender_branch="$(git -C "$me" branch --show-current)"
+recipient_wt="$(cd "$me/.." && pwd)/$recipient_branch"
+reply_dir="$me/claude-hydra-messages/inbox/"
+
+if [ ! -e "$recipient_wt/.git" ]; then
+    echo "doorbell: $recipient_wt is not a worktree of this project; not ringing." >&2
+    exit 2
+fi
+if [ ! -f "$recipient_wt/claude-hydra-messages/inbox/$filename" ]; then
+    echo "doorbell: $filename is not in $recipient_wt/claude-hydra-messages/inbox/." >&2
+    echo "          Deliver the file first (copy → verify → archive); the doorbell only points at it." >&2
+    exit 2
+fi
+
+session="$(ha_session_name_for "$recipient_branch")"
+text="$(ha_doorbell_text "$sender_branch" "$filename" "$reply_dir")"
+ha_ring_doorbell "$session" "$recipient_branch" "$text" "$fallback"
