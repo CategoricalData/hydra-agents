@@ -272,7 +272,9 @@ A runner's messaging can reach farther than one project: Claude Code's reaches e
 account. So the harness requires, whatever the runner:
 
 1. **Workers stay on their machine.** A worker's doorbell goes only to sessions of its own project
-   on its own machine. Sending anywhere else must be impossible, or must need a human's approval.
+   on its own machine. By default, sending anywhere else must be impossible or need a human's
+   approval. That enforcement is a per-machine choice (`isolateWorkers`, below); the rule itself
+   always holds.
 2. **Staging-to-staging is the one cross-machine channel.** Staging sessions of one project on
    different machines message each other freely, but only at the exact names in the config's
    `stagingPeers` roster, never at a name found by listing. The roster holds the name the other
@@ -300,6 +302,22 @@ account. So the harness requires, whatever the runner:
 Spawn and recovery enforce 1 and 3 through the runner adapter's `ha_runner_prepare_worktree`, per
 worktree. Points 2 and 4 to 7 are protocol, which each agent follows.
 
+**Worker isolation is set per machine.** `isolateWorkers` (default `"true"`) controls whether the
+adapter enforces point 1. The checked-in `hydra-agents.json` is shared by every machine, so leave
+it `"true"` there, and turn it off only on a machine that runs nothing but public projects:
+
+- in `hydra-agents.local.json` beside `hydra-agents.json` (machine-local; the consuming project
+  gitignores it): `{"isolateWorkers": "false"}`. Any optional field set there overrides the
+  shared file; or
+- with the environment variable `HYDRA_AGENTS_ISOLATE_WORKERS=false`, which wins over both files.
+
+**Re-tighten when private projects share the machine.** The moment a private project's sessions
+run on a machine with relaxed workers, set `isolateWorkers` back to `"true"` (delete the override)
+and rerun recovery or respawn, so every worker worktree gets its isolation setting again. Loosening
+never removes an existing setting by itself: with isolation off, the adapter reports a worker
+worktree that still has it and leaves the change to a human. The `ListAgents` deny is not part
+of this switch; it stays on everywhere by default.
+
 ### With Claude Code
 
 **Root cause: the scope is the account.** `ListAgents` and `SendMessage` reach every Claude Code
@@ -310,8 +328,8 @@ protocol, with settings as enforcement where they exist:
 
 - **Per worktree, not per user.** Spawn and recovery write each worktree's
   `.claude/settings.local.json` (machine-local, gitignored), merging into what is there:
-  - worker worktrees get `isolatePeerMachines: true`: any send off this machine then needs a
-    human's approval, even in bypass mode (point 1);
+  - worker worktrees get `isolatePeerMachines: true` while `isolateWorkers` is `"true"`: any
+    send off this machine then needs a human's approval, even in bypass mode (point 1);
   - staging worktrees (`standardizedBranches`) do not, because staging needs to reach its
     `stagingPeers` (point 2);
   - every worktree gets a permission deny on `ListAgents`, unless the config sets
