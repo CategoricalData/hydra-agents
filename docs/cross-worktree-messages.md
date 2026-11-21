@@ -304,6 +304,8 @@ Isolation is decided by two facts, and the guard applies when **either** calls f
 
 "Messaging guarded" means: sends off this machine are impossible or need a human's approval,
 inbound cross-session messages are held for a human (or refused), and sessions can't be listed.
+One narrow exception, for a public repo's staging on a sensitive machine, is under
+[Staging exemption](#staging-exemption-public-repo-sensitive-machine).
 
 ### What must hold (any runner)
 
@@ -314,7 +316,8 @@ inbound cross-session messages are held for a human (or refused), and sessions c
    `stagingPeers` roster, never at a name found by listing. In a guarded project, every such send
    also needs a human's approval (point 1's enforcement applies to staging too). That is the
    trade-off: a private project's cross-machine staging coordination is human-approved per send.
-   It stays allowed (it is the same project), but it is not hands-off.
+   It stays allowed (it is the same project), but it is not hands-off. A public repo's staging
+   on a sensitive machine is the one exemption (below).
 3. **No enumeration.** Agents address peers by computed name (`bin/session-name <branch>`) or,
    for staging, from the roster. Session listing is denied by default, everywhere, so public
    projects' agents never see private projects' session names either.
@@ -341,6 +344,27 @@ inbound cross-session messages are held for a human (or refused), and sessions c
 Spawn and recovery apply points 1, 3, 4 and 8 through the runner adapter, per worktree, and check a
 private repo's checked-in guard. Points 2 and 5 to 7 are protocol, which each agent follows. For a
 private project, see [Setting up a private project](private-projects.md).
+
+### Staging exemption: public repo, sensitive machine
+
+A public project that runs staging on several machines needs those staging sessions to talk
+(point 2), and the guard would stop them on any sensitive machine. So, deliberately and narrowly:
+**a public repo's staging worktree on a sensitive machine, when `stagingPeers` is set, gets the
+filesystem limits and the listing deny, but not the messaging guard.**
+
+- Its off-machine sends go only to names in `stagingPeers` (protocol, point 5).
+- Its inbound is open, because the runner's inbound policy has no allowlist; it acts only on
+  messages from `stagingPeers` names or from local senders of its own project (protocol, point 6).
+- Workers on that machine stay fully guarded. A private repo's staging is never exempt: its
+  checked-in guard applies, so its cross-machine sends need approval.
+- Without `stagingPeers`, there is no cross-machine channel to keep open, and staging is guarded
+  like everything else.
+
+The cost: an exempt staging session receives whatever any session on the account sends it, and
+public names are guessable, so the receive-side check is the only defense against a message from
+outside the project steering it. Staging has more authority than a worker (it lands work on
+`main`), so it must apply that check strictly. A project that can't accept this leaves
+`stagingPeers` empty and coordinates across machines another way.
 
 ### Limits (be honest about these)
 
@@ -372,6 +396,10 @@ project. The adapter (`bin/runners/claude-code.sh`) implements the contract with
   scope wins). `bin/project-guard --write` writes it, `bin/project-guard --check` verifies it, and
   spawn and recovery warn loudly when it is missing. Spawn then seeds its hooks into
   `settings.local.json`, never over the tracked file.
+- **Staging exemption:** for a public repo's staging worktree on a sensitive machine with
+  `stagingPeers` set, the adapter writes the filesystem and `ListAgents` denies but not
+  `isolatePeerMachines` or `crossSessionInbound`. If an earlier run left them there, it reports
+  them and leaves the removal to a human.
 - **Guarded worktrees: the same three settings locally.** Spawn and recovery also write them to
   each guarded worktree's `.claude/settings.local.json` (machine-local, gitignored). That covers a
   public repo on a sensitive machine, whose checked-in file must not carry them, and a private repo
