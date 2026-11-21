@@ -47,5 +47,13 @@ if [ ! -f "$recipient_wt/claude-hydra-messages/inbox/$filename" ]; then
 fi
 
 session="$(ha_session_name_for "$recipient_branch")"
-text="$(ha_doorbell_text "$sender_branch" "$filename" "$reply_dir")"
+if [ "$HA_PRIVATE" = true ]; then
+    # A private project's doorbell names nothing: the sender by its opaque session
+    # name, the file by its timestamp only (the filename carries the sender's
+    # branch), and no paths. The recipient resolves the sender with
+    # `session-name --resolve <name>` and finds the file in its own inbox.
+    text="$(ha_doorbell_text_private "$(ha_session_name_for "$sender_branch")" "${filename:0:20}")"
+else
+    text="$(ha_doorbell_text "$sender_branch" "$filename" "$reply_dir")"
+fi
 ha_ring_doorbell "$session" "$recipient_branch" "$text" "$fallback"

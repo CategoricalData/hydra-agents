@@ -46,6 +46,22 @@ claude-remote() {
   else
     default_label="$(basename "$(dirname "$PWD")")/$(basename "$PWD")"
   fi
+  # A private project's label must not carry its name or branch: the Remote Control
+  # label is visible account-wide. Inside a harness project not declared public,
+  # default to its opaque session name (bin/lib-identity.sh; hydra-agents#7).
+  local _src _t _root
+  _src="${BASH_SOURCE[0]}"
+  while [ -L "$_src" ]; do
+    _t="$(readlink "$_src")"
+    case "$_t" in /*) _src="$_t" ;; *) _src="$(dirname "$_src")/$_t" ;; esac
+  done
+  if _root="$(git rev-parse --show-toplevel 2>/dev/null)" \
+      && [ -r "$(dirname "$_src")/lib-identity.sh" ]; then
+    . "$(dirname "$_src")/lib-identity.sh"
+    if ha_identity_load "$_root" && [ "$HA_ID_PUBLIC" != true ]; then
+      default_label="$(ha_display_name "$_root")"
+    fi
+  fi
   # First positional arg (if present and not a flag) overrides the label; the
   # rest are forwarded to `claude` so callers can pass --continue, --resume, etc.
   local label

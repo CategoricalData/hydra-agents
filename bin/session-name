@@ -3,6 +3,7 @@
 # project: the same rule spawn, recovery and the doorbell use.
 #
 # Usage: session-name [branch]     (default: the current worktree's branch)
+#        session-name --resolve <name>   the branch (sibling worktree) with that name
 #
 # A receiver checks a doorbell's sender with it: the sender's name must equal
 # `session-name <branch>` for the branch its "From <branch>:" gives. Private
@@ -12,6 +13,17 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib-config.sh"
 ha_load_config || exit 2
+if [ "${1:-}" = "--resolve" ]; then
+    [ -n "${2:-}" ] || { echo "usage: session-name --resolve <name>" >&2; exit 2; }
+    me="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "session-name: run this from a worktree" >&2; exit 2; }
+    for wt in "$(cd "$me/.." && pwd)"/*/; do
+        [ -e "$wt/.git" ] || continue
+        b="$(git -C "$wt" branch --show-current 2>/dev/null)"
+        [ -n "$b" ] && [ "$(ha_session_name_for "$b")" = "$2" ] && { echo "$b"; exit 0; }
+    done
+    echo "session-name: no worktree of this project has the name $2" >&2
+    exit 1
+fi
 branch="${1:-$(git branch --show-current 2>/dev/null)}"
 [ -n "$branch" ] || { echo "usage: session-name [branch]" >&2; exit 2; }
 ha_session_name_for "$branch" && echo

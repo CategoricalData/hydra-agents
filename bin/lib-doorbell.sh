@@ -30,6 +30,12 @@ ha_doorbell_text() {
     printf 'From %s: new message %s in your inbox; reply to %s' "$1" "$2" "$3"
 }
 
+# ha_doorbell_text_private <sender-session-name> <file-timestamp>: for a private
+# project, which must not emit its branch names or paths.
+ha_doorbell_text_private() {
+    printf 'From %s: new message %s* in your inbox; resolve the sender with session-name --resolve %s' "$1" "$2" "$1"
+}
+
 ha_doorbell_claude-sendmessage() {
     [ -n "${CLAUDECODE:-}" ] || return 2
     cat <<EOF
