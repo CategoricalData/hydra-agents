@@ -33,8 +33,12 @@
 #         stores and personal folders under ~), optionally the Bash sandbox
 #         (sandboxBash), and a loud warning if the agent runs in bypass mode.
 #       * every worktree: a ListAgents deny unless denyListAgents is "false".
-#     isolatePeerMachines also applies to staging: a guarded project's
-#     cross-machine staging sends each need a human's approval.
+#     The guard applies to staging too (a private project's cross-machine staging
+#     sends each need a human's approval), with ONE exemption: a public repo's
+#     staging worktree on a sensitive machine, when stagingPeers is set, gets the
+#     filesystem and listing denies but not the messaging guard, so the cross-machine
+#     staging channel works. Its sends and the messages it acts on are limited to
+#     stagingPeers by protocol (crossSessionInbound has no allowlist).
 #   - Doorbell: SendMessage is a tool the agent calls, so the claude-sendmessage
 #     backend tells the agent what to send (see lib-doorbell.sh); tmux is the
 #     fallback.
@@ -128,12 +132,28 @@ ha_runner_prepare_worktree() {
             | .permissions.deny = (((.permissions.deny // []) + ["ListAgents"]) | unique)' || return 1
     fi
 
-    if [ "${HA_GUARDED:-true}" = true ]; then
+    # The one exemption: a PUBLIC repo's staging worktree on a sensitive machine, when
+    # the project has a cross-machine staging roster, keeps its messaging open so the
+    # staging-to-staging channel works. Off-machine sends are limited to stagingPeers
+    # and inbound is acted on only from them, by protocol. Workers stay guarded; a
+    # private repo's staging can't be exempted (its checked-in guard wins anyway).
+    local guard="${HA_GUARDED:-true}"
+    if [ "$guard" = true ] && [ "${HA_PRIVATE:-true}" = false ] \
+            && ha_is_standardized_branch "$branch" && [ -n "${HA_STAGING_PEERS:-}" ]; then
+        guard=staging-exempt
+    fi
+    if [ "$guard" = true ]; then
         _ha_merge_json "$f" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-hold}" || return 1
-    elif [ "$(jq -r '.isolatePeerMachines // false' "$f" 2>/dev/null)" = true ]; then
+    elif [ "$(jq -r '.isolatePeerMachines // false' "$f" 2>/dev/null)" = true ] \
+            || [ "$(jq -r '.crossSessionInbound // "accept"' "$f" 2>/dev/null)" != accept ]; then
         # Loosening is a human's call: report a leftover guard, don't remove it.
-        echo "note: $f sets isolatePeerMachines: true, but this project is public on an open" >&2
-        echo "      machine. Left as is; remove it by hand to loosen this worktree." >&2
+        echo "note: $f still carries the messaging guard (isolatePeerMachines or crossSessionInbound)," >&2
+        if [ "$guard" = staging-exempt ]; then
+            echo "      but a public repo's staging worktree is exempt so it can reach stagingPeers." >&2
+        else
+            echo "      but this project is public on an open machine." >&2
+        fi
+        echo "      Left as is; remove those keys by hand to loosen this worktree." >&2
     fi
 
     if [ "${HA_SENSITIVE:-true}" = true ]; then
