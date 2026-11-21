@@ -27,6 +27,16 @@
 #   HA_STAGING_PEERS  space-separated session names of this project's staging
 #                     sessions on other machines (stagingPeers; may be empty)
 #   HA_DENY_LIST_AGENTS "true" unless denyListAgents is "false"
+#   HA_ISOLATE_WORKERS "true" or "false" (isolateWorkers; default "true"): whether
+#                     worker sessions are confined to this machine. Per machine,
+#                     via the env var or hydra-agents.local.json (below).
+#   HA_LOCAL_CONFIG_FILE absolute path to hydra-agents.local.json, or empty
+#
+# Machine-local overrides: hydra-agents.json is checked in and shared by every
+# machine, so per-machine choices go in hydra-agents.local.json beside it (the
+# consuming project gitignores it). Any optional string field set there wins over
+# hydra-agents.json. For isolateWorkers, the env var HYDRA_AGENTS_ISOLATE_WORKERS
+# wins over both.
 #   HA_RUNNER         the agent runner adapter (runner; default claude-code), see
 #                     bin/lib-runner.sh
 #   HA_DOORBELLS      doorbell backends to try, in order (doorbells; default: the
@@ -78,6 +88,17 @@ ha_load_config() {
         return 6
     fi
 
+    # Machine-local overrides (see the header). Validate up front, like the main file.
+    HA_LOCAL_CONFIG_FILE=""
+    if [ -f "$HA_PROJECT_ROOT/hydra-agents.local.json" ]; then
+        HA_LOCAL_CONFIG_FILE="$HA_PROJECT_ROOT/hydra-agents.local.json"
+        if ! jq empty "$HA_LOCAL_CONFIG_FILE" 2>/dev/null; then
+            echo "error: hydra-agents.local.json is not valid JSON ($HA_LOCAL_CONFIG_FILE)." >&2
+            echo "       Run 'jq . $HA_LOCAL_CONFIG_FILE' to see the parse error." >&2
+            return 6
+        fi
+    fi
+
     # Read a required string field; error if missing/null/empty. `strings` guards
     # against a non-string value (number/object) being accepted as a garbage value.
     local _v
@@ -93,8 +114,11 @@ ha_load_config() {
     # EMPTY-STRING value as "use the default" — jq's `//` alone only defaults on
     # null/false, so an explicit "" would otherwise slip through as an empty value.
     _opt() {
-        local _o
-        _o="$(jq -re --arg k "$1" '.[$k] | strings // empty' "$HA_CONFIG_FILE" 2>/dev/null || true)"
+        local _o=""
+        if [ -n "$HA_LOCAL_CONFIG_FILE" ]; then
+            _o="$(jq -re --arg k "$1" '.[$k] | strings // empty' "$HA_LOCAL_CONFIG_FILE" 2>/dev/null || true)"
+        fi
+        [ -n "$_o" ] || _o="$(jq -re --arg k "$1" '.[$k] | strings // empty' "$HA_CONFIG_FILE" 2>/dev/null || true)"
         if [ -z "$_o" ]; then printf '%s' "$2"; else printf '%s' "$_o"; fi
     }
 
@@ -132,6 +156,18 @@ ha_load_config() {
     # Deny ListAgents in every worktree's local settings (default). Set
     # denyListAgents to "false" only where the user-level settings already deny it.
     HA_DENY_LIST_AGENTS="$(_opt denyListAgents true)"
+    # Confine worker sessions to this machine (default). A per-machine choice: a
+    # machine that runs only public projects may turn it off; turn it back on when
+    # private projects share the machine (docs/cross-worktree-messages.md §
+    # Project isolation).
+    HA_ISOLATE_WORKERS="${HYDRA_AGENTS_ISOLATE_WORKERS:-$(_opt isolateWorkers true)}"
+    case "$HA_ISOLATE_WORKERS" in
+        true|false) ;;
+        *)
+            echo "error: isolateWorkers must be \"true\" or \"false\" (got \"$HA_ISOLATE_WORKERS\")." >&2
+            return 5
+            ;;
+    esac
 
     # The agent runner (Claude Code today) is an adapter, so the harness can move to
     # another runner without touching the file protocol. Empty HA_DOORBELLS means
@@ -156,6 +192,7 @@ ha_load_config() {
     export HA_PROJECT_ROOT HA_CONFIG_FILE HA_AGENTS_DIR HA_AGENTS_VERSION \
            HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL \
            HA_SESSION_PREFIX HA_STAGING_PEERS HA_DENY_LIST_AGENTS \
+           HA_ISOLATE_WORKERS HA_LOCAL_CONFIG_FILE \
            HA_STANDARDIZED_BRANCHES HA_MACHINE HA_RUNNER HA_DOORBELLS
     unset -f _req _opt   # don't leak these generic helper names into the caller's shell
     return 0

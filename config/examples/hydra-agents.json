@@ -20,5 +20,8 @@
   "stagingPeers": ["hydra-staging-machine1", "hydra-staging-machine2"],
 
   "_denyListAgents_comment": "Optional, default \"true\": spawn and recovery add a ListAgents deny to each worktree's .claude/settings.local.json, so agents address peers by computed name only. Set \"false\" only where user-level settings already deny it.",
-  "denyListAgents": "true"
+  "denyListAgents": "true",
+
+  "_isolateWorkers_comment": "Optional, default \"true\": confine worker sessions to their machine (with Claude Code, isolatePeerMachines in each worker worktree's settings.local.json). This is a per-machine choice, so leave it \"true\" here and override it on a machine that runs only public projects, in hydra-agents.local.json (gitignored, beside this file) or with HYDRA_AGENTS_ISOLATE_WORKERS=false. Set it back to \"true\" when private projects share the machine.",
+  "isolateWorkers": "true"
 }

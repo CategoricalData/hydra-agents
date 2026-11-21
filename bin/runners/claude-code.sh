@@ -21,7 +21,8 @@
 #   - Isolation settings, in the worktree's .claude/settings.local.json
 #     (machine-local, gitignored), merged into whatever is there:
 #       * worker worktrees: isolatePeerMachines: true, so any send off this machine
-#         needs approval, even in bypass mode;
+#         needs approval, even in bypass mode. Only while isolateWorkers is "true"
+#         (the default), a per-machine setting (lib-config.sh);
 #       * staging worktrees (standardizedBranches): no isolatePeerMachines, because
 #         staging coordinators of one project on different machines message each
 #         other, restricted by protocol to the config's stagingPeers;
@@ -81,13 +82,23 @@ ha_runner_check_version() {
 ha_runner_prepare_worktree() {
     local wt="$1" branch="$2" f tmp isolate deny
     f="$wt/.claude/settings.local.json"
-    if ha_is_standardized_branch "$branch"; then isolate=false; else isolate=true; fi
+    if ha_is_standardized_branch "$branch" || [ "${HA_ISOLATE_WORKERS:-true}" = "false" ]; then
+        isolate=false
+    else
+        isolate=true
+    fi
     if [ "${HA_DENY_LIST_AGENTS:-true}" = "false" ]; then deny=false; else deny=true; fi
     mkdir -p "$wt/.claude" || return 1
     [ -s "$f" ] || printf '{}\n' > "$f"
     if ! jq empty "$f" 2>/dev/null; then
         echo "error: $f is not valid JSON; not touching it. Fix it, then rerun." >&2
         return 1
+    fi
+    # Loosening is a human's call: with isolation off, an existing true is reported, not removed.
+    if [ "$isolate" = false ] && ! ha_is_standardized_branch "$branch" \
+            && [ "$(jq -r '.isolatePeerMachines // false' "$f")" = true ]; then
+        echo "note: isolateWorkers is \"false\" on this machine, but $f still sets" >&2
+        echo "      isolatePeerMachines: true. Left as is; remove it by hand to loosen this worktree." >&2
     fi
     tmp="$f.tmp.$$"
     # Staging may already carry an isolatePeerMachines: true written by hand or by
