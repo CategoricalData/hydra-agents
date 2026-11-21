@@ -702,11 +702,13 @@ notes are for issue agents doing build-affecting work.)
 - Agents currently run as `tmux` sessions hosting `claude-remote`, spawned by
   [`bin/spawn-issue-worktree.sh`](../bin/spawn-issue-worktree.sh). (A different
   agent framework would substitute its own launcher; the worktree + inbox
-  contract is what matters.) Each Claude session is named after its tmux session
-  (`<sessionPrefix><branch>`), and that name is its `SendMessage` address. You drive
-  another session by writing to its `claude-hydra-messages/inbox/` and ringing its
-  doorbell: `SendMessage` to its computed name, or `tmux send-keys` as the fallback
-  (see [cross-worktree-messages.md](cross-worktree-messages.md#waking-the-recipient-the-doorbell)
+  contract is what matters; runner specifics live in `bin/runners/<runner>.sh`.)
+  Each agent session is named after its tmux session (`<sessionPrefix><branch>`),
+  and that name is its messaging address. You drive another session by writing to
+  its `claude-hydra-messages/inbox/` and ringing its doorbell with `bin/doorbell
+  <branch> <file>`: the runner's native messaging (Claude Code: `SendMessage`), or
+  `tmux send-keys` as the fallback (see
+  [cross-worktree-messages.md](cross-worktree-messages.md#waking-the-recipient-the-doorbell)
   and its [project isolation](cross-worktree-messages.md#project-isolation) rules).
 - **`tmux send-keys` has real quirks.** Input can lag 10s+; verify a keystroke
   landed by watching the target's transcript mtime, not the pane. A draft

@@ -29,10 +29,11 @@ go), so there is no sensible hardcoded default — the operator sets it at
 spawn time. The script creates a worktree, seeds `.claude/`, opens a
 detached `tmux` session, and starts the agent session inside it (currently
 Claude Code via `claude-remote`; the lifecycle below is framework-neutral).
-The Claude session is named after the tmux session (`<sessionPrefix><branch>`), so
-you and its siblings reach it with `SendMessage` at a computed name; the script
-prints it, warns if Claude Code is older than v2.1.224, and seeds the briefing with
-the doorbell and project-isolation rules
+The runner adapter (`bin/runners/<runner>.sh`) names the agent session after the
+tmux session (`<sessionPrefix><branch>`), so you and its siblings reach it at a
+computed name with `bin/doorbell`. The script prints the name, warns if the runner
+is too old for native messaging, writes the worktree's isolation settings, and
+seeds the briefing with the doorbell and project-isolation rules
 ([cross-worktree-messages.md](cross-worktree-messages.md#waking-the-recipient-the-doorbell)).
 
 Seed the assignment (via the agent's `claude-hydra-messages/inbox/`) with

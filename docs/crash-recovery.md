@@ -102,8 +102,8 @@ already exist, so `bin/spawn-issue-worktree.sh` (which creates a *new* branch of
 selection: `--roster FILE` (lines of `<worktree> [model]`) or `--live-within
 <minutes>`, plus `--max N`, `--prompt "<wake-up prompt>"` and `--dry-run` first.
 It names sessions exactly as spawn does (so a later run never duplicates them, and
-each agent keeps its `SendMessage` address), skips a worktree whose `claude` still
-runs, warns if Claude Code is older than v2.1.224,
+each agent keeps its messaging address), skips a worktree whose agent process still
+runs, warns if the runner is too old for native messaging (Claude Code: v2.1.224),
 reuses each agent's model from its last transcript, and sends the prompt with
 the split-Enter technique below. Run with no selection it considers every issue
 worktree, which is rarely what you want after a memory crash. What it does per
@@ -125,7 +125,10 @@ interactive shell so it resolves. `-b` = `--dangerously-skip-permissions`
 tmux session name as both the label and the name: the Remote Control handle and the
 `SendMessage` address then stay the same across restarts, so peers reach the
 restored agent at the name they already use (see
-[cross-worktree-messages.md § Addressing](cross-worktree-messages.md#default-claude-codes-sendmessage)).
+[cross-worktree-messages.md § The contract](cross-worktree-messages.md#the-contract-any-runner)).
+`recover-agents.sh` gets this command from the runner adapter
+(`ha_runner_launch_cmd`), and also writes each worktree's isolation settings before
+launching, as spawn does.
 (This launch is Claude-Code-specific; another framework substitutes its own launcher.)
 
 Before relaunching, make sure no `claude` is still running in the worktree under
