@@ -22,6 +22,11 @@
   "_denyListAgents_comment": "Optional, default \"true\": spawn and recovery add a ListAgents deny to each worktree's .claude/settings.local.json, so agents address peers by computed name only. Set \"false\" only where user-level settings already deny it.",
   "denyListAgents": "true",
 
-  "_isolateWorkers_comment": "Optional, default \"true\": confine worker sessions to their machine (with Claude Code, isolatePeerMachines in each worker worktree's settings.local.json). This is a per-machine choice, so leave it \"true\" here and override it on a machine that runs only public projects, in hydra-agents.local.json (gitignored, beside this file) or with HYDRA_AGENTS_ISOLATE_WORKERS=false. Set it back to \"true\" when private projects share the machine.",
-  "isolateWorkers": "true"
+  "_visibility_comment": "Optional: \"public\" or \"private\". Decides isolation per repo (docs/cross-worktree-messages.md § Project isolation). If absent, the harness asks `gh repo view`; if that can't tell, it treats the repo as private (fail closed). A private repo gets opaque session names (p-<hash>) and must check in its guard (bin/project-guard; docs/private-projects.md).",
+  "visibility": "public",
+
+  "_privateInbound_comment": "Optional, \"hold\" (default) or \"refuse\": how guarded sessions (private repo, or sensitive machine) treat inbound cross-session messages.",
+  "privateInbound": "hold",
+
+  "_machineLocal_comment": "Machine-local settings go in hydra-agents.local.json beside this file (gitignored), never here: machineSensitivity (\"sensitive\" | \"open\"; default \"open\" where ~/.hydra-sandbox exists, else \"sensitive\"), sensitivePaths (extra ~-relative paths to keep agents out of), sandboxBash (\"true\" to turn on Claude Code's Bash sandbox there). Any optional field set in the local file overrides this one."
 }

@@ -27,16 +27,24 @@
 #   HA_STAGING_PEERS  space-separated session names of this project's staging
 #                     sessions on other machines (stagingPeers; may be empty)
 #   HA_DENY_LIST_AGENTS "true" unless denyListAgents is "false"
-#   HA_ISOLATE_WORKERS "true" or "false" (isolateWorkers; default "true"): whether
-#                     worker sessions are confined to this machine. Per machine,
-#                     via the env var or hydra-agents.local.json (below).
+#   HA_VISIBILITY     "private" or "public": the repository's visibility, from
+#                     `visibility`, else `gh repo view`, else "private" (fail closed)
+#   HA_SENSITIVITY    "sensitive" or "open": this MACHINE's sensitivity, from
+#                     machineSensitivity in hydra-agents.local.json or the env var
+#                     HYDRA_AGENTS_MACHINE_SENSITIVITY; default "open" on a machine
+#                     that declares itself a sandbox (~/.hydra-sandbox), else
+#                     "sensitive" (fail closed)
+#   HA_PRIVATE / HA_SENSITIVE / HA_GUARDED  "true"/"false"; guarded = private OR
+#                     sensitive (docs/cross-worktree-messages.md § Project isolation)
+#   HA_INBOUND        inbound policy for guarded sessions: privateInbound, "hold"
+#                     (default) or "refuse"
 #   HA_LOCAL_CONFIG_FILE absolute path to hydra-agents.local.json, or empty
 #
 # Machine-local overrides: hydra-agents.json is checked in and shared by every
 # machine, so per-machine choices go in hydra-agents.local.json beside it (the
 # consuming project gitignores it). Any optional string field set there wins over
-# hydra-agents.json. For isolateWorkers, the env var HYDRA_AGENTS_ISOLATE_WORKERS
-# wins over both.
+# hydra-agents.json. machineSensitivity is read ONLY from there (or the env var):
+# it describes the machine, so the shared file must not carry it.
 #   HA_RUNNER         the agent runner adapter (runner; default claude-code), see
 #                     bin/lib-runner.sh
 #   HA_DOORBELLS      doorbell backends to try, in order (doorbells; default: the
@@ -156,17 +164,64 @@ ha_load_config() {
     # Deny ListAgents in every worktree's local settings (default). Set
     # denyListAgents to "false" only where the user-level settings already deny it.
     HA_DENY_LIST_AGENTS="$(_opt denyListAgents true)"
-    # Confine worker sessions to this machine (default). A per-machine choice: a
-    # machine that runs only public projects may turn it off; turn it back on when
-    # private projects share the machine (docs/cross-worktree-messages.md §
-    # Project isolation).
-    HA_ISOLATE_WORKERS="${HYDRA_AGENTS_ISOLATE_WORKERS:-$(_opt isolateWorkers true)}"
-    case "$HA_ISOLATE_WORKERS" in
-        true|false) ;;
-        *)
-            echo "error: isolateWorkers must be \"true\" or \"false\" (got \"$HA_ISOLATE_WORKERS\")." >&2
-            return 5
-            ;;
+    # Isolation inputs (docs/cross-worktree-messages.md § Project isolation):
+    # the guard applies when the repo is private OR the machine is sensitive.
+    HA_VISIBILITY="$(_opt visibility "")"
+    if [ -z "$HA_VISIBILITY" ]; then
+        # gh is a network call; cache it per config file for repeated loads
+        # (recovery loads the config once per worktree).
+        if [ -n "${HA_VISIBILITY_CACHE:-}" ] && [ "${HA_VISIBILITY_CACHE%%=*}" = "$HA_CONFIG_FILE" ]; then
+            HA_VISIBILITY="${HA_VISIBILITY_CACHE#*=}"
+        else
+            HA_VISIBILITY="$(gh repo view "$HA_ISSUE_REPO" --json visibility -q .visibility 2>/dev/null \
+                | tr '[:upper:]' '[:lower:]' || true)"
+            case "$HA_VISIBILITY" in
+                public) ;;
+                private|internal) HA_VISIBILITY=private ;;
+                *)
+                    echo "note: could not determine the visibility of $HA_ISSUE_REPO (no \"visibility\" in" >&2
+                    echo "      hydra-agents.json, and gh could not tell); treating it as private." >&2
+                    HA_VISIBILITY=private
+                    ;;
+            esac
+            HA_VISIBILITY_CACHE="$HA_CONFIG_FILE=$HA_VISIBILITY"
+        fi
+    fi
+    case "$HA_VISIBILITY" in
+        private|public) ;;
+        *) echo "error: visibility must be \"private\" or \"public\" (got \"$HA_VISIBILITY\")." >&2; return 5 ;;
+    esac
+
+    if [ -n "${HYDRA_AGENTS_MACHINE_SENSITIVITY:-}" ]; then
+        HA_SENSITIVITY="$HYDRA_AGENTS_MACHINE_SENSITIVITY"
+    elif [ -n "$HA_LOCAL_CONFIG_FILE" ] \
+            && HA_SENSITIVITY="$(jq -re '.machineSensitivity | strings' "$HA_LOCAL_CONFIG_FILE" 2>/dev/null)"; then
+        :
+    elif [ -f "$HOME/.hydra-sandbox" ]; then
+        HA_SENSITIVITY=open
+    else
+        HA_SENSITIVITY=sensitive
+    fi
+    case "$HA_SENSITIVITY" in
+        sensitive|open) ;;
+        *) echo "error: machineSensitivity must be \"sensitive\" or \"open\" (got \"$HA_SENSITIVITY\")." >&2; return 5 ;;
+    esac
+    if jq -e 'has("machineSensitivity")' "$HA_CONFIG_FILE" >/dev/null 2>&1; then
+        echo "warning: machineSensitivity in hydra-agents.json is ignored: it describes a machine, so it" >&2
+        echo "         belongs in hydra-agents.local.json (or HYDRA_AGENTS_MACHINE_SENSITIVITY)." >&2
+    fi
+
+    HA_PRIVATE=false;   [ "$HA_VISIBILITY" = private ] && HA_PRIVATE=true
+    HA_SENSITIVE=false; [ "$HA_SENSITIVITY" = sensitive ] && HA_SENSITIVE=true
+    HA_GUARDED=false;   { [ "$HA_PRIVATE" = true ] || [ "$HA_SENSITIVE" = true ]; } && HA_GUARDED=true
+    HA_INBOUND="$(_opt privateInbound hold)"
+    # Sensitive machines: extra ~-relative paths to keep agents out of, and whether
+    # to turn on the runner's Bash sandbox. Both are usually machine-local.
+    HA_SENSITIVE_PATHS="$(_opt sensitivePaths "")"
+    HA_SANDBOX_BASH="$(_opt sandboxBash false)"
+    case "$HA_INBOUND" in
+        hold|refuse) ;;
+        *) echo "error: privateInbound must be \"hold\" or \"refuse\" (got \"$HA_INBOUND\")." >&2; return 5 ;;
     esac
 
     # The agent runner (Claude Code today) is an adapter, so the harness can move to
@@ -192,7 +247,8 @@ ha_load_config() {
     export HA_PROJECT_ROOT HA_CONFIG_FILE HA_AGENTS_DIR HA_AGENTS_VERSION \
            HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL \
            HA_SESSION_PREFIX HA_STAGING_PEERS HA_DENY_LIST_AGENTS \
-           HA_ISOLATE_WORKERS HA_LOCAL_CONFIG_FILE \
+           HA_LOCAL_CONFIG_FILE HA_VISIBILITY HA_VISIBILITY_CACHE HA_SENSITIVITY \
+           HA_PRIVATE HA_SENSITIVE HA_GUARDED HA_INBOUND HA_SENSITIVE_PATHS HA_SANDBOX_BASH \
            HA_STANDARDIZED_BRANCHES HA_MACHINE HA_RUNNER HA_DOORBELLS
     unset -f _req _opt   # don't leak these generic helper names into the caller's shell
     return 0
@@ -203,15 +259,37 @@ ha_load_config() {
 # "-<host>" for standardized branches (staging, ...), which exist on every machine.
 # Spawn, recovery and the doorbell all use this, so a sender computes a recipient's
 # name instead of discovering it.
+#
+# A PRIVATE project's names are opaque: "p-" plus a short hash of the repository
+# and that descriptive name. Session names are visible account-wide (in any
+# listing, on any machine), so a descriptive name would leak the project and the
+# branch. The hash is deterministic, so a sender still computes it.
 ha_session_name_for() {
-    local _std
+    local _std _n="${HA_SESSION_PREFIX:-}$1"
     for _std in ${HA_STANDARDIZED_BRANCHES:-staging}; do
         if [ "$1" = "$_std" ]; then
-            printf '%s%s-%s' "${HA_SESSION_PREFIX:-}" "$1" "${HA_MACHINE:-$(hostname -s 2>/dev/null || echo unknown)}"
-            return 0
+            _n="$_n-${HA_MACHINE:-$(hostname -s 2>/dev/null || echo unknown)}"
+            break
         fi
     done
-    printf '%s%s' "${HA_SESSION_PREFIX:-}" "$1"
+    if [ "${HA_PRIVATE:-true}" = true ]; then
+        _n="p-$(ha_short_hash "${HA_ISSUE_REPO:-}/$_n")" || return 1
+    fi
+    printf '%s' "$_n"
+}
+
+# ha_short_hash <text>: first 10 hex digits of its SHA-256 (GNU or BSD tools).
+ha_short_hash() {
+    local _h
+    if command -v sha256sum >/dev/null 2>&1; then
+        _h="$(printf '%s' "$1" | sha256sum)"
+    elif command -v shasum >/dev/null 2>&1; then
+        _h="$(printf '%s' "$1" | shasum -a 256)"
+    else
+        echo "error: need sha256sum or shasum to compute a private session name" >&2
+        return 1
+    fi
+    printf '%s' "${_h:0:10}"
 }
 
 # ha_is_standardized_branch <branch>: true if branch is in HA_STANDARDIZED_BRANCHES.
