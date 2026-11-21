@@ -6,7 +6,10 @@
 # event so a central watcher can see which sub-sessions are blocked without
 # attaching to each tmux pane.
 #
-# Marker dir: ~/.cache/claude-attention/<worktree-basename>.txt
+# Marker dir: ~/.cache/claude-attention/<worktree-basename>.txt for a project whose
+# config declares it public; otherwise <worktrees>/.claude-attention/, inside the
+# project, because a marker names the worktree and carries its path and the
+# notification text (bin/lib-identity.sh, hydra-agents#7).
 # Contents: timestamp + (truncated) notification message piped on stdin.
 #
 # Coordinator pattern:
@@ -20,7 +23,8 @@ set -euo pipefail
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 NAME="$(basename "$ROOT")"
-DIR="$HOME/.cache/claude-attention"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-identity.sh"
+DIR="$(ha_attention_dir "$ROOT")"
 mkdir -p "$DIR"
 
 # Notification hook receives a JSON payload on stdin (per Claude Code's

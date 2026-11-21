@@ -81,6 +81,13 @@ fi
 
 wd_resolve_coordinator_dir
 staging_dir="$WD_COORDINATOR_DIR"
+# Put the marker where that coordinator looks: a private project keeps its
+# attention markers inside the project (bin/lib-identity.sh).
+if [ -n "$staging_dir" ] && [ -r "$_AS_DIR/../../lib-identity.sh" ]; then
+  . "$_AS_DIR/../../lib-identity.sh"
+  ATTENTION_DIR="$(ha_attention_dir "$staging_dir")"
+  marker="$ATTENTION_DIR/$(basename "$marker")"
+fi
 if [ -z "$staging_dir" ]; then
   # No coordinator worktree right now. Still record an attention marker so the
   # danger is not lost, then exit cleanly.

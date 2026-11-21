@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code terminal styling for SSH+tmux+iTerm2 (GCE remote).
-# Title -> git branch (relayed to iTerm2 tab via `set-titles on`); tab tint by
+# Title -> git branch, or a private project's opaque name (relayed to iTerm2 tab via `set-titles on`); tab tint by
 # state via OSC-6 + window bg via OSC Ph, both wrapped in tmux passthrough
 # (`allow-passthrough on`).
 #   Usage: term-style.sh <running|idle|done>
@@ -12,7 +12,10 @@ state="${1:-done}"
 # firings don't overwrite the blue with done-green or running-cream.
 # The marker is cleared by any non-blue claude-tab-color.sh call, or
 # manually with `rm`. Marker key is the worktree directory's basename.
-marker="$HOME/.cache/claude-attention/$(basename "$PWD")-completed.txt"
+# shellcheck source=lib-identity.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-identity.sh"
+_wt_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+marker="$(ha_attention_dir "$_wt_root")/$(basename "$PWD")-completed.txt"
 if [ -f "$marker" ]; then
   exit 0
 fi
@@ -28,6 +31,9 @@ fi
 [ -z "$tty" ] && tty="${CLAUDE_TTY:-/dev/tty}"
 
 # --- Bare branch label for $PWD -----------------------------------------
+# A private project's title is its opaque session name: pane and terminal titles
+# leave the project (tmux lists them; iTerm2 shows them), so they must not carry
+# its branch (bin/lib-identity.sh).
 case "$PWD" in
   */worktrees/*) branch=$(echo "$PWD" | sed -E 's#.*/worktrees/([^/]+).*#\1#') ;;
   */wiki|*/wiki/*) branch="wiki" ;;
@@ -35,6 +41,9 @@ case "$PWD" in
     branch=$(git -C "$PWD" branch --show-current 2>/dev/null)
     [ -z "$branch" ] && branch=$(basename "$PWD") ;;
 esac
+if ha_identity_load "$_wt_root" && [ "$HA_ID_PUBLIC" != true ]; then
+  branch="$(ha_display_name "$_wt_root")"
+fi
 
 # --- Title: set the tmux pane title (authoritative; relayed to iTerm2). --
 if [ -n "$pane" ]; then

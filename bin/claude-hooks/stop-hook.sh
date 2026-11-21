@@ -10,4 +10,5 @@ set -euo pipefail
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 NAME="$(basename "$ROOT")"
-rm -f "$HOME/.cache/claude-attention/$NAME.txt"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-identity.sh"
+rm -f "$(ha_attention_dir "$ROOT")/$NAME.txt"
