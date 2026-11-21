@@ -46,6 +46,9 @@ genuinely Claude-Code-specific mechanisms are labelled where they appear.
   project isolation,
   receiving, and the polling cadence.
 
+- **[private-projects.md](private-projects.md)** — setting up a private project:
+  visibility, the checked-in guard, opaque session names, and sensitive machines.
+
 ## Machine operations
 
 - **[external-alerts.md](external-alerts.md)** — how a staging agent handles
