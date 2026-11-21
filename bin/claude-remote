@@ -7,7 +7,19 @@
 # Staleness fixes (making the ~/.hydra-sandbox marker name configurable) are a
 # follow-up, tracked separately — the body below is a faithful lift-and-shift.
 #
-# Usage: claude-remote [label] [-m|--model MODEL] [-b|--bypass] [-- claude args...]
+# Usage: claude-remote [label] [-m|--model MODEL] [-b|--bypass] [-n|--name NAME] [-- claude args...]
+#
+# Session name (the address other sessions use with SendMessage; see
+# docs/cross-worktree-messages.md): -n/--name NAME, else the label. Inside tmux the
+# label defaults to the tmux session name, which is unique per machine and carries
+# the project prefix (hydra-agents#1), so spawned and recovered agents get a stable,
+# unique, project-qualified name. Without --name, Claude Code would derive one from
+# the working directory plus a random suffix, ignoring the --remote-control label.
+#
+# A `--` ends claude-remote's own options and is consumed here. Everything after it
+# goes to `claude` as options: forwarding the `--` itself made `claude` treat the
+# rest as the initial prompt (a `-- --name X` launch sent the prompt "--name" and
+# left the session with its auto name). hydra-agents#7.
 set -uo pipefail
 
 claude-remote() {
@@ -25,6 +37,9 @@ claude-remote() {
     # common dir. For a normal .git repo it's the parent of .git, which is
     # also the parent of the common dir, so one rule handles both.
     repo=$(basename "$(dirname "$common_dir")")
+    # A submodule's common dir is <superproject git dir>/modules/<name>: the repo
+    # name is the submodule's, not "modules".
+    [ "$repo" = "modules" ] && repo=$(basename "$common_dir")
     branch=$(git branch --show-current 2>/dev/null)
     [ -z "$branch" ] && branch=$(git rev-parse --short HEAD 2>/dev/null)
     default_label="${repo}-${branch}"
@@ -40,10 +55,11 @@ claude-remote() {
   else
     label="$default_label"
   fi
-  # Parse leading -m/--model and -b/--bypass flags; remaining args forwarded to claude.
+  # Parse leading -m/--model, -b/--bypass and -n/--name flags; remaining args forwarded to claude.
   # -b/--bypass passes --dangerously-skip-permissions (for sandboxed worktrees).
   local model="opus"
   local bypass=""
+  local name=""
   while [ $# -gt 0 ]; do
     case "$1" in
       -m|--model)
@@ -62,9 +78,33 @@ claude-remote() {
         bypass="--dangerously-skip-permissions"
         shift
         ;;
+      -n|--name)
+        if [ $# -lt 2 ]; then
+          echo "claude-remote: $1 requires a session name" >&2
+          return 1
+        fi
+        name="$2"
+        shift 2
+        ;;
+      --name=*)
+        name="${1#--name=}"
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
       *)
         break
         ;;
+    esac
+  done
+  # Name the session explicitly so its address is deterministic: -n/--name, else
+  # the label. A --name forwarded to claude (e.g. after `--`) wins over both.
+  local a name_args=(--name "${name:-$label}")
+  for a in "$@"; do
+    case "$a" in
+      -n|--name|--name=*) name_args=(); break ;;
     esac
   done
   # Sandbox auto-bypass: on a machine that declares itself a Hydra sandbox
@@ -80,7 +120,7 @@ claude-remote() {
   # waits (work that never started), and the build-lane wrapper already gates starts on memory
   # headroom. It only takes effect if set at launch (Josh, Desk card 53, 2026-11-06).
   CLAUDE_LABEL="$label" CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1 \
-    claude --remote-control "$label" --model "$model" $bypass "$@"
+    claude --remote-control "$label" ${name_args[@]+"${name_args[@]}"} --model "$model" $bypass "$@"
 }
 
 claude-remote "$@"
