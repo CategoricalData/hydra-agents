@@ -99,6 +99,35 @@ every cross-session ping with `From <sender>: ` and spell out absolute paths —
 deictic references ("my inbox", "your coordinator"), which dangle when attribution
 is uncertain.
 
+### Forwarding `--` to `claude` turns the remaining options into the prompt
+`claude` treats `--` as the end of its options, so `claude ... -- --name x` starts a
+session whose first prompt is `--name` and whose name is automatic. A wrapper must consume
+its own `--` rather than forward it (`claude-remote` does). Variadic options do the same in
+reverse: `--disallowedTools ListAgents '<prompt>'` swallows the prompt as more tool names.
+Use `--disallowedTools=ListAgents`, or put the prompt after a `--`.
+
+### Session names: computed, unique, and only your project's
+The address `SendMessage` uses is the session's name. Without `--name`, Claude Code derives
+it from the working directory's name plus a random suffix, ignoring the `--remote-control`
+label, so the name can't be predicted. The harness launchers pass `--name` equal to the tmux
+session name. Claude Code does **not** enforce unique names: two sessions launched with the
+same `--name` both get it, and a send then needs the `[ref]` form. The harness gets uniqueness
+from tmux (session names are unique per machine) plus the project prefix and the host suffix on
+standardized branches. Also expect, in a `ListAgents` listing: sessions started before
+v2.1.224 appear only as Remote Control rows with no local socket; a dead session can linger as
+an offline Remote Control row with the same name as its live successor; and the listing
+includes every project on the account (see
+[Project isolation](cross-worktree-messages.md#project-isolation)). Address by computed name;
+don't pick rows from a listing.
+
+### A native message can be held instead of delivered
+`SendMessage` returns success once the message is in the recipient's queue, not once it has been
+read. The recipient may hold it for approval instead of delivering it: usually when the sender
+runs in a different permission mode, and always (in bypass mode) when the sender is a script
+rather than another session. A held doorbell is a lost doorbell until a human approves it, so
+read the send result and ring the tmux fallback when it says held or refused. The inbox file
+is unaffected either way: it is the message, and it waits.
+
 ### A stalled session vs. a working one
 An agent can *stall* — idle, waiting on a completion notification that already fired
 — and look identical to a busy one in a stale TUI indicator. Distinguish by checking
