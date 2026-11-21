@@ -24,6 +24,15 @@
 #   HA_ISSUE_REPO     "owner/repo" for gh (issueRepo)
 #   HA_AGENT_GUIDE    the agent-context filename, e.g. CLAUDE.md (agentGuide)
 #   HA_SPAWN_MODEL    default spawn model tier (spawnModel)
+#   HA_STAGING_PEERS  space-separated session names of this project's staging
+#                     sessions on other machines (stagingPeers; may be empty)
+#   HA_DENY_LIST_AGENTS "true" unless denyListAgents is "false"
+#   HA_RUNNER         the agent runner adapter (runner; default claude-code), see
+#                     bin/lib-runner.sh
+#   HA_DOORBELLS      doorbell backends to try, in order (doorbells; default: the
+#                     runner's own, then tmux), see bin/lib-doorbell.sh
+#
+# Also defines ha_session_name_for <branch>: the session name for a branch.
 
 # Walk up from $1 (or $PWD) to find the nearest hydra-agents.json. Prints its
 # absolute path, or nothing if none found before the filesystem root.
@@ -113,6 +122,23 @@ ha_load_config() {
     HA_STANDARDIZED_BRANCHES="$(_opt standardizedBranches "staging")"
     HA_MACHINE="$(hostname -s 2>/dev/null || echo unknown)"
 
+    # Cross-machine staging roster: the exact session names (as other machines
+    # resolve them) of this project's staging sessions elsewhere. Staging sends
+    # off-machine ONLY to these, never to a name found by listing (hydra-agents#7,
+    # docs/cross-worktree-messages.md § Project isolation). A JSON array, or a
+    # space-separated string.
+    HA_STAGING_PEERS="$(jq -r '.stagingPeers // empty | if type == "array" then join(" ") else . end' \
+        "$HA_CONFIG_FILE" 2>/dev/null || true)"
+    # Deny ListAgents in every worktree's local settings (default). Set
+    # denyListAgents to "false" only where the user-level settings already deny it.
+    HA_DENY_LIST_AGENTS="$(_opt denyListAgents true)"
+
+    # The agent runner (Claude Code today) is an adapter, so the harness can move to
+    # another runner without touching the file protocol. Empty HA_DOORBELLS means
+    # "the runner adapter's default", resolved by lib-doorbell.sh.
+    HA_RUNNER="$(_opt runner claude-code)"
+    HA_DOORBELLS="$(_opt doorbells "")"
+
     # Resolve the hydra-agents checkout. HYDRA_AGENTS_DIR (env) overrides for a
     # nonstandard layout; otherwise agentsDir from the config, relative to the
     # project root. Both resolve to an absolute path.
@@ -129,7 +155,33 @@ ha_load_config() {
 
     export HA_PROJECT_ROOT HA_CONFIG_FILE HA_AGENTS_DIR HA_AGENTS_VERSION \
            HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL \
-           HA_SESSION_PREFIX
+           HA_SESSION_PREFIX HA_STAGING_PEERS HA_DENY_LIST_AGENTS \
+           HA_STANDARDIZED_BRANCHES HA_MACHINE HA_RUNNER HA_DOORBELLS
     unset -f _req _opt   # don't leak these generic helper names into the caller's shell
     return 0
+}
+
+# ha_session_name_for <branch>: the session name (tmux session, and the agent's
+# messaging address) for a branch of this project. HA_SESSION_PREFIX + branch, plus
+# "-<host>" for standardized branches (staging, ...), which exist on every machine.
+# Spawn, recovery and the doorbell all use this, so a sender computes a recipient's
+# name instead of discovering it.
+ha_session_name_for() {
+    local _std
+    for _std in ${HA_STANDARDIZED_BRANCHES:-staging}; do
+        if [ "$1" = "$_std" ]; then
+            printf '%s%s-%s' "${HA_SESSION_PREFIX:-}" "$1" "${HA_MACHINE:-$(hostname -s 2>/dev/null || echo unknown)}"
+            return 0
+        fi
+    done
+    printf '%s%s' "${HA_SESSION_PREFIX:-}" "$1"
+}
+
+# ha_is_standardized_branch <branch>: true if branch is in HA_STANDARDIZED_BRANCHES.
+ha_is_standardized_branch() {
+    local _std
+    for _std in ${HA_STANDARDIZED_BRANCHES:-staging}; do
+        [ "$1" = "$_std" ] && return 0
+    done
+    return 1
 }

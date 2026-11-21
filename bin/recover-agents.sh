@@ -25,17 +25,20 @@
 # Models: a roster line's model wins; otherwise the model of the worktree's most
 # recent Claude transcript is reused, so a restart never silently changes an
 # agent's model (claude-remote's own default would). Session names match
-# spawn-issue-worktree.sh (HA_SESSION_PREFIX + name), and each Claude session is
-# named after its tmux session (--name), so its SendMessage address is the same
-# as before the crash. Existing sessions are skipped, never duplicated; so is a
-# worktree where a `claude` process is still running under some other session
-# name (reported, for a human to retire). See docs/crash-recovery.md.
+# spawn-issue-worktree.sh (ha_session_name_for), and the runner adapter
+# (bin/runners/<runner>.sh) names each agent session after its tmux session, so
+# its messaging address is the same as before the crash. Existing sessions are
+# skipped, never duplicated; so is a worktree where the runner's process is still
+# running under some other session name (reported, for a human to retire). Before
+# launching, the adapter writes each worktree's cross-session isolation settings,
+# as at spawn; a worktree whose settings can't be written is not launched. See
+# docs/crash-recovery.md.
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib-config.sh"
-. "$HERE/lib-claude-version.sh"
+. "$HERE/lib-runner.sh"
 
 WORKTREES_DIR="${HA_WORKTREES_DIR:-${HOME}/projects/github/CategoricalData/hydra/worktrees}"
 TRANSCRIPTS_DIR="${HOME}/.claude/projects"
@@ -49,12 +52,15 @@ while [ $# -gt 0 ]; do
     --model) default_model="$2"; shift 2 ;;
     --prompt) prompt="$2"; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-ha_check_claude_version   # warns (never fails) below the native-messaging minimum
+# The runner adapter comes from the project's config; load it once up front.
+ha_load_config >/dev/null 2>&1 || true
+ha_load_runner || exit 1
+ha_runner_check_version   # warns (never fails), e.g. below Claude Code's messaging minimum
 
 if [ ! -d "$WORKTREES_DIR" ]; then
   echo "error: $WORKTREES_DIR not found" >&2
@@ -65,19 +71,15 @@ fi
 # wrong name and launches a DUPLICATE agent (hydra-agents#1). Per-project
 # HA_SESSION_PREFIX, plus a `hostname -s` suffix for standardized branches.
 session_name_for() {
-  local wt_path="$1" wt_name="$2" prefix="" sess_branch="$2"
+  local wt_path="$1" wt_name="$2"
   if CLAUDE_PROJECT_DIR="$wt_path" ha_load_config >/dev/null 2>&1; then
-    prefix="$HA_SESSION_PREFIX"
-    local _std
-    for _std in ${HA_STANDARDIZED_BRANCHES}; do
-      if [ "$wt_name" = "$_std" ]; then sess_branch="${wt_name}-${HA_MACHINE}"; break; fi
-    done
     [ -z "$default_model" ] && default_model="${HA_SPAWN_MODEL:-}"
   fi
-  printf '%s%s' "$prefix" "$sess_branch"
+  ha_session_name_for "$wt_name"
 }
 
-# PIDs of `claude` processes whose working directory is $1. A live one means the
+# PIDs of the runner's agent processes (HA_RUNNER_PROCESS, e.g. `claude`) whose
+# working directory is $1. A live one means the
 # worktree's agent survived (or was relaunched by hand) under a session name this
 # script doesn't know: launching another would give two agents one worktree, and
 # two sessions one SendMessage name. Linux reads /proc; elsewhere lsof, if present.
@@ -85,11 +87,11 @@ claude_pids_in() {
   local dir pid
   dir="$(cd "$1" && pwd -P)" || return 0
   if [ -d /proc/self ]; then
-    for pid in $(pgrep -x claude 2>/dev/null); do
+    for pid in $(pgrep -x "${HA_RUNNER_PROCESS:-claude}" 2>/dev/null); do
       [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$dir" ] && printf '%s ' "$pid"
     done
   elif command -v lsof >/dev/null 2>&1; then
-    for pid in $(pgrep -x claude 2>/dev/null); do
+    for pid in $(pgrep -x "${HA_RUNNER_PROCESS:-claude}" 2>/dev/null); do
       lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep -qx "n$dir" && printf '%s ' "$pid"
     done
   fi
@@ -146,19 +148,23 @@ for c in "${candidates[@]}"; do
   # `=` forces exact-name matching (tmux otherwise prefix-matches — hydra-agents#1).
   if tmux has-session -t "=$session" 2>/dev/null; then skipped+=("$session (already running)"); continue; fi
   pids="$(claude_pids_in "$wt_path")"
-  if [ -n "$pids" ]; then skipped+=("$session (claude already running in $wt: pid ${pids% }; retire it or rename its tmux session to $session)"); continue; fi
+  if [ -n "$pids" ]; then skipped+=("$session (${HA_RUNNER_PROCESS:-claude} already running in $wt: pid ${pids% }; retire it or rename its tmux session to $session)"); continue; fi
   [ -z "$model" ] && model="$(model_from_transcript "$wt_path")"
   [ -z "$model" ] && model="${default_model:-opus}"
   if [ "${#launched[@]}" -ge "$max" ]; then deferred+=("$wt $model"); continue; fi
 
+  if [ "$dry_run" = 1 ]; then launched+=("$session ($model)"); continue; fi
+  CLAUDE_PROJECT_DIR="$wt_path" ha_load_config >/dev/null 2>&1 || true
+  if ! ha_runner_prepare_worktree "$wt_path" "$(git -C "$wt_path" branch --show-current 2>/dev/null || echo "$wt")"; then
+    skipped+=("$session (could not write isolation settings; see the error above)"); continue
+  fi
   launched+=("$session ($model)")
-  [ "$dry_run" = 1 ] && continue
   tmux new-session -d -s "$session" -c "$wt_path"
   tmux set-window-option -t "=$session:" automatic-rename off 2>/dev/null || true
   tmux rename-window -t "=$session:" "$wt" 2>/dev/null || true
-  # -n: the session keeps its pre-crash SendMessage address (an older claude-remote
-  # forwards -n to claude, which takes the same flag).
-  tmux send-keys -t "=$session:" "claude-remote $session -m $model -n $session --continue" Enter
+  # The runner adapter names the session after its tmux session, so the agent
+  # keeps its pre-crash messaging address, and resumes its prior conversation.
+  tmux send-keys -t "=$session:" "$(ha_runner_launch_cmd "$session" "$model" --resume)" Enter
   if [ -n "$prompt" ]; then
     sleep 10   # let the TUI come up; the first launch after a CLI update is slower
     # Text and Enter separately, then an insurance Enter: the TUI's paste

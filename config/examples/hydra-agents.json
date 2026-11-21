@@ -14,5 +14,11 @@
   "sessionPrefix": "hydra-",
 
   "_standardizedBranches_comment": "Optional. Space-separated set of branch names that exist on EVERY machine (staging, …) and so must be machine-qualified in the session/agent name to stay distinct across a multi-machine fleet — e.g. staging -> 'hydra-staging-<machine1>' / 'hydra-staging-<machine2>' (suffix from `hostname -s`). Issue branches (feature_NNN_*) are already unique and stay unqualified. Defaults to 'staging'.",
-  "standardizedBranches": "staging"
+  "standardizedBranches": "staging",
+
+  "_stagingPeers_comment": "Optional. The exact session names of this project's staging sessions on OTHER machines: the only off-machine recipients a staging session may message (docs/cross-worktree-messages.md § Project isolation). Use the name other machines resolve, which is the Remote Control label; claude-remote launches use the same string for both. Never fill this from a ListAgents listing. Example values are placeholders.",
+  "stagingPeers": ["hydra-staging-machine1", "hydra-staging-machine2"],
+
+  "_denyListAgents_comment": "Optional, default \"true\": spawn and recovery add a ListAgents deny to each worktree's .claude/settings.local.json, so agents address peers by computed name only. Set \"false\" only where user-level settings already deny it.",
+  "denyListAgents": "true"
 }
