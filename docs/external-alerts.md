@@ -237,7 +237,11 @@ reclaiming that cache is the staging agent's standing remedy.
   discipline as a stale liveness beat): tell the land-critical worker(s) to hold
   any heavy build step, reclaim safe caches, confirm `df` headroom, then broadcast
   resume. Do not grant a build slot into a near-full disk — the link step will
-  fail or corrupt.
+  fail or corrupt. Enforce this in the slot wrapper rather than by memory:
+  `bin/lib-disk-check.sh`'s `ha_check_disk_headroom <needed_mb>` fails fast, with a
+  clear message, when free space is below what the build needs (Hydra calls it with
+  6144 MB right after acquiring its stack slot). Unlike the memory guard it fails
+  instead of waiting, because disk does not free itself.
 
 > **Hydra note:** in Hydra this cache is the per-worktree Haskell `.stack-work`
 > (~5–6 GB each; ~90–100 GB aggregate across the fleet). Hydra's structural fix
