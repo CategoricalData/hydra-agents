@@ -6,7 +6,8 @@
 # recipient it is there. Delivery mechanisms differ by runner, so the doorbell is
 # pluggable (hydra-agents#7): each backend is a function ha_doorbell_<backend>,
 # tried in the order given by the config's `doorbells` (default: the runner
-# adapter's HA_RUNNER_DOORBELLS), with tmux always last as the baseline.
+# adapter's HA_RUNNER_DOORBELLS, or HA_RUNNER_GUARDED_DOORBELLS when the project is
+# guarded), with tmux always last as the baseline.
 #
 # Backend contract: ha_doorbell_<name> <recipient-session> <recipient-branch> <text>
 #   returns 0  delivered, or (for a backend only the agent itself can perform, such
@@ -64,7 +65,15 @@ ha_doorbell_tmux() {
 # (those whose output is instructions), going straight to the scripted ones.
 ha_ring_doorbell() {
     local session="$1" branch="$2" text="$3" fallback="${4:-}" b list rc tried=""
-    list="${HA_DOORBELLS:-${HA_RUNNER_DOORBELLS:-}}"
+    # Guarded sessions (private repo or sensitive machine) hold native messages, so
+    # by default they get only the runner's guarded backends.
+    if [ -n "${HA_DOORBELLS:-}" ]; then
+        list="$HA_DOORBELLS"
+    elif [ "${HA_GUARDED:-false}" = true ]; then
+        list="${HA_RUNNER_GUARDED_DOORBELLS:-tmux}"
+    else
+        list="${HA_RUNNER_DOORBELLS:-}"
+    fi
     case " $list " in *" tmux "*) ;; *) list="$list tmux" ;; esac
     for b in $list; do
         if [ "$fallback" = "--fallback" ] && [ "$b" = "claude-sendmessage" ]; then continue; fi

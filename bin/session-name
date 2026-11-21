@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# session-name — print the session name (messaging address) for a branch of this
+# project: the same rule spawn, recovery and the doorbell use.
+#
+# Usage: session-name [branch]     (default: the current worktree's branch)
+#
+# A receiver checks a doorbell's sender with it: the sender's name must equal
+# `session-name <branch>` for the branch its "From <branch>:" gives. Private
+# projects get opaque names (p-<hash>); see docs/cross-worktree-messages.md.
+
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/lib-config.sh"
+ha_load_config || exit 2
+branch="${1:-$(git branch --show-current 2>/dev/null)}"
+[ -n "$branch" ] || { echo "usage: session-name [branch]" >&2; exit 2; }
+ha_session_name_for "$branch" && echo

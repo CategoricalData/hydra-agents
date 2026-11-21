@@ -147,7 +147,7 @@ cleanup_partial_spawn() {
 }
 trap cleanup_partial_spawn EXIT
 
-echo "Seeding .claude/settings.json (hooks + permissions)..."
+echo "Seeding .claude settings (hooks + permissions)..."
 mkdir -p "$WT/.claude"
 # Hooks live in the hydra-agents checkout (agents/bin/claude-hooks/). Verify the
 # referenced hook scripts exist and are executable *before* launching — a missing
@@ -161,7 +161,21 @@ for hook in inbox-hook.sh notification-hook.sh stop-hook.sh proposals-hook.sh de
         exit 1
     fi
 done
-cp "$HOOKS_DIR/template-settings.json" "$WT/.claude/settings.json"
+# Seed the template into settings.json, unless the repo tracks that file (a private
+# project's checked-in guard lives there, docs/private-projects.md): then seed
+# settings.local.json instead, merged over anything already in it, so the tracked
+# file is never overwritten. Claude Code merges both scopes.
+SEED="$WT/.claude/settings.json"
+if git -C "$WT" ls-files --error-unmatch .claude/settings.json >/dev/null 2>&1; then
+    SEED="$WT/.claude/settings.local.json"
+    echo "  (.claude/settings.json is checked in; seeding settings.local.json instead)"
+fi
+if [ -s "$SEED" ]; then
+    _tmp="$SEED.tmp.$$"
+    jq -s '.[0] * .[1]' "$SEED" "$HOOKS_DIR/template-settings.json" > "$_tmp" && mv -f "$_tmp" "$SEED"
+else
+    cp "$HOOKS_DIR/template-settings.json" "$SEED"
+fi
 # The template's hook commands assume the checkout at <project>/agents/ (a peer of
 # worktrees/), i.e. "$CLAUDE_PROJECT_DIR"/../../agents/. Projects that consume
 # hydra-agents elsewhere (Hydra: <project>/external/agents/) would otherwise get hooks
@@ -176,11 +190,11 @@ case "$_agents_abs" in
     *)               _agents_ref="$_agents_abs" ;;
 esac
 if [ "$_agents_ref" != "../../agents" ]; then
-    _tmp="$WT/.claude/settings.json.tmp.$$"
+    _tmp="$SEED.tmp.$$"
     sed "s#\.\./\.\./agents/bin/claude-hooks#${_agents_ref}/bin/claude-hooks#g" \
-        "$WT/.claude/settings.json" > "$_tmp" && mv -f "$_tmp" "$WT/.claude/settings.json"
+        "$SEED" > "$_tmp" && mv -f "$_tmp" "$SEED"
 fi
-if grep -q '\.\./\.\./agents/bin/claude-hooks' "$WT/.claude/settings.json" && [ "$_agents_ref" != "../../agents" ]; then
+if grep -q '\.\./\.\./agents/bin/claude-hooks' "$SEED" && [ "$_agents_ref" != "../../agents" ]; then
     echo "error: failed to point settings.json hooks at $_agents_ref" >&2
     exit 1
 fi
@@ -192,9 +206,9 @@ fi
 # jq (no Python dependency).
 if [ -f "$HOME/.hydra-sandbox" ]; then
     echo "Sandbox marker present — enabling permission bypass for this agent..."
-    _tmp="$WT/.claude/settings.json.tmp.$$"
+    _tmp="$SEED.tmp.$$"
     if jq '.permissions = (.permissions // {}) | .permissions.defaultMode = "bypassPermissions"' \
-            "$WT/.claude/settings.json" > "$_tmp" && mv -f "$_tmp" "$WT/.claude/settings.json"; then
+            "$SEED" > "$_tmp" && mv -f "$_tmp" "$SEED"; then
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
