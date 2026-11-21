@@ -46,7 +46,7 @@ An external alert is recognisable by its provenance, not a rigid format. Signs:
 - it reports a **machine/environment condition** (resource pressure, a host-level
   failure) rather than issue lifecycle (handoff, review, rebase, landing);
 - it often arrives **on both channels at once** — an inbox message *and* an
-  attention-marker under `~/.cache/claude-attention/` — because the condition is
+  attention-marker in the attention directory — because the condition is
   urgent enough to interrupt rather than wait for the next turn.
 
 Exact filenames, headers, and wording will vary by sender and are not guaranteed;

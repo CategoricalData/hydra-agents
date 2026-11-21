@@ -288,7 +288,7 @@ mechanisms guarantee it is impossible to miss:
   equivalent standing surface or rely on the polling cadence.)
 - **Age/urgency escalation.** A proposal sitting undispositioned past a threshold
   (N check-ins / M hours) is promoted from the digest to an attention-marker in
-  `~/.cache/claude-attention/` (the channel the user already watches); urgent
+  the attention directory (the channel the user already watches); urgent
   ones write the marker immediately. The reminder gets *louder* with age and
   never silently expires.
 
@@ -718,7 +718,7 @@ notes are for issue agents doing build-affecting work.)
   draft) may NOT submit via a local Enter — clear with `C-u`, retype with
   `send-keys -l`, then Enter. Treat suggestion-drafts as hints, never as
   authorization.
-- **Attention markers** appear under `~/.cache/claude-attention/` (written by
+- **Attention markers** appear in the attention directory (`~/.cache/claude-attention/` for a project declared public, `<worktrees>/.claude-attention/` otherwise; `ha_attention_dir` in `bin/lib-identity.sh`) (written by
   the notification hook, cleared by the stop hook). An agent can *stall* (idle,
   waiting on a shell-completion notification that already fired) — distinguish
   stall from work by checking for a live process in its worktree cwd, not by the

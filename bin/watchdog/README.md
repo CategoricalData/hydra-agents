@@ -190,7 +190,8 @@ catch. See "Where Claude fits in" below.
    agent's *next* turn, and an idle coordinator may not have one for an hour.
    `WATCHDOG_WAKE=0` disables this.
 4. **Drops an attention marker** for the user:
-   `~/.cache/claude-attention/watchdog-<host>-memory-pressure.txt` (acute) or
+   `<attention dir>/watchdog-<host>-memory-pressure.txt` (the coordinator's attention directory:
+   `~/.cache/claude-attention/` for a public project, project-local otherwise) (acute) or
    `…-chronic.txt` (so a digest never hides a recent acute warning).
 5. **De-bounces per tier:** acute at most every 10 minutes
    (`ACUTE_COOLDOWN_SECS`), chronic at most daily (`CHRONIC_COOLDOWN_SECS`).

@@ -35,17 +35,26 @@ clone on every machine has it. If your `.gitignore` excludes `.claude/`, un-igno
 Until it lands, spawn and recovery print a warning for every worktree and guard each one with
 local settings, but clones elsewhere stay unguarded.
 
-## 3. Expect opaque session names
+## 3. Expect opaque names everywhere outside the project
 
-Sessions are named `p-<hash>` instead of `<prefix><branch>`, because every session on the account
-can see every session's name. The names are deterministic: `<agents>/bin/session-name <branch>`
-prints any branch's name, and spawn, recovery and `bin/doorbell` compute them the same way. tmux
-window titles still show the branch, locally.
+The project's name, branch names and issue titles are confidential: the harness never emits them
+outside the project's own worktrees. So sessions are named `p-<hash>` instead of
+`<prefix><branch>`, and so are Remote Control labels, tmux session, window and pane titles,
+terminal titles (`claude-remote`, `term-style.sh`), and doorbells. The names are deterministic:
+`<agents>/bin/session-name <branch>` prints any branch's name, `session-name --resolve <name>`
+maps one back, and spawn, recovery and `bin/doorbell` compute them the same way. Attention
+markers go to `<worktrees>/.claude-attention/`, not the machine-wide `~/.cache/claude-attention/`.
+Inside the worktrees (branches, plan docs, inbox filenames) real names are fine.
+
+Write issue titles, commit messages and branch names knowing that they stay inside the repo,
+and keep them out of anything you post elsewhere.
 
 ## 4. Doorbells ring tmux
 
 Guarded sessions hold inbound cross-session messages for a human, even from their own project, so
-`bin/doorbell` uses tmux. The file protocol is unchanged.
+`bin/doorbell` uses tmux. The doorbell names the sender by its opaque name and the file by its
+timestamp only: `From p-<hash>: new message <timestamp>* in your inbox`. The file protocol is
+unchanged.
 
 ## 5. Cross-machine staging needs approval per send
 

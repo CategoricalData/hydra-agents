@@ -238,7 +238,7 @@ Two quieter kinds of rot are worth a sweep while you're here:
   messages are going somewhere else; find out where before you rely on it.
 - Post a hold/status note on the cross-machine coordination channel so a sibling
   staging agent knows this machine is back.
-- Watch `~/.cache/claude-attention/` for agents that come up blocked.
+- Watch the attention directory for agents that come up blocked.
 - **Resume watching the liveness heartbeat.** Once the machine is back, the
   monitor's heartbeat should start beating again; confirm a fresh one arrives and
   fold heartbeat-watching back into your standing inbox cadence (see
