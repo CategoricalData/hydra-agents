@@ -181,6 +181,12 @@ message; the doorbell only points at it.
   doorbell. This asymmetry affects only the recipient's resilience; it **never** relaxes the
   sender's obligation to ring.
 
+> **tmux is not optional.** Every agent runs in its own detached tmux session (or the runner-neutral
+> equivalent: a persistent terminal-multiplexer session), started by spawn and recovery. That is
+> what keeps agents alive through lost connections, closed terminal windows and Remote Control
+> drops. Native messaging replaces only tmux's role as the *doorbell*; "fallback" below always
+> means the delivery path, never the process host.
+
 ### The contract (any runner)
 
 - **Addressing: compute the name, don't search for it.** Every agent session has a name derived

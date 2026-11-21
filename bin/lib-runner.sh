@@ -3,7 +3,8 @@
 #
 # hydra-agents must not be tied to one agent runner (hydra-agents#7; README §
 # Design principles). The runner-neutral core is the file protocol and the
-# worktree/tmux layout; anything that depends on the runner (how to launch an
+# worktree/tmux layout (every agent runs in its own detached tmux session, whatever
+# the runner and whatever the doorbell); anything that depends on the runner (how to launch an
 # agent, which settings isolate it, how to check its version, which doorbells it
 # supports) is an adapter in bin/runners/<runner>.sh. Adding a runner means adding
 # one file that defines:

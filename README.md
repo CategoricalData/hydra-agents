@@ -29,7 +29,10 @@ runner, given that runner's equivalents for messaging, skills and so on. So:
   they don't call a runner directly.
 - **Delivery is pluggable.** The doorbell that tells an agent a file has arrived
   has backends (`bin/lib-doorbell.sh`): the runner's native messaging where it
-  has one, with tmux as the always-available baseline.
+  has one, with tmux as the always-available baseline. That makes tmux optional
+  only as a *delivery* path: every agent still runs in its own detached tmux session
+  (or an equivalent persistent multiplexer session), which keeps it alive through
+  lost connections, closed windows and Remote Control drops.
 - **Docs state the contract first** (what must hold, for any runner), then each
   runner's implementation.
 

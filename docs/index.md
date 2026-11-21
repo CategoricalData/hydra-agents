@@ -42,7 +42,8 @@ genuinely Claude-Code-specific mechanisms are labelled where they appear.
 - **[cross-worktree-messages.md](cross-worktree-messages.md)** — the transport
   every workflow rides on: the `claude-hydra-messages/` inbox/outbox layout, the
   proposal and decision queues, filename format, the copy-verify-archive send
-  discipline, the pluggable doorbell (the runner's native messaging, tmux fallback),
+  discipline, the pluggable doorbell (the runner's native messaging, tmux as the fallback
+  doorbell; tmux stays every agent's process host),
   project isolation,
   receiving, and the polling cadence.
 
