@@ -222,10 +222,17 @@ ha_runner_check_project_guard() {
 # agent's tmux pane. An older claude-remote without -n forwards it to `claude`,
 # which takes the same flag; claude-remote forwards --settings too. A guarded
 # session gets its inbound policy here, the only scope where "accept" applies.
+# A staging session (a standardized branch, e.g. "staging") gets it on every machine:
+# staging peers on other machines may run in a different permission mode, and the
+# default rule would hold their messages for approval on the receiving side.
 ha_runner_launch_cmd() {
-    local session="$1" model="$2" resume="" inbound=""
+    local session="$1" model="$2" resume="" inbound="" b want=false
     [ "${3:-}" = "--resume" ] && resume=" --continue"
-    if [ "${HA_GUARDED:-true}" = true ]; then
+    [ "${HA_GUARDED:-true}" = true ] && want=true
+    for b in ${HA_STANDARDIZED_BRANCHES:-staging}; do
+        case "$session" in *"$b"*) want=true ;; esac
+    done
+    if [ "$want" = true ]; then
         inbound=" --settings '{\"crossSessionInbound\":\"${HA_INBOUND:-accept}\"}'"
     fi
     printf 'claude-remote %s -m %s -n %s%s%s' "$session" "$model" "$session" "$inbound" "$resume"

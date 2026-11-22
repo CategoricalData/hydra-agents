@@ -439,6 +439,12 @@ project. The adapter (`bin/runners/claude-code.sh`) implements the contract with
   every message, from any permission mode (verified on v2.1.314). A stricter `privateInbound`
   (`"hold"`, `"refuse"`) is also written to the guard, where it applies. Sessions started before
   this change get it at their next spawn, recovery or relaunch.
+  **Staging sessions get the same launch flag on every machine, guarded or not.** Staging peers
+  on different machines may run in different permission modes (e.g. bypass on an open machine,
+  prompting on a sensitive one), and the default rule holds a message whose sender is in the
+  other mode, so without the flag each staging-to-staging message waits for approval on the
+  receiving side. A hand-launched staging session must pass the flag itself. On an open,
+  single-project machine, `accept` in the user settings does the same for every session.
 - **Bypass mode honors the `ask` rule.** A session in bypass mode (`--dangerously-skip-permissions`)
   still prompts for `SendMessage` when an `ask` rule lists it (verified on v2.1.314), so the
   harness does **not** set `disableBypassPermissionsMode`: that would force a prompt for every tool

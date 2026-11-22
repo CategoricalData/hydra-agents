@@ -61,5 +61,9 @@ c="$(HA_GUARDED=false ha_runner_launch_cmd s1 opus --resume)"
 [ "$c" = "claude-remote s1 -m opus -n s1 --continue" ] \
     && echo "ok   unguarded launch has no inbound flag" || { echo "FAIL unguarded launch: $c"; fails=$((fails + 1)); }
 
+c="$(HA_GUARDED=false ha_runner_launch_cmd proj-staging-host1 opus --resume)"
+[ "$c" = "claude-remote proj-staging-host1 -m opus -n proj-staging-host1 --settings '{\"crossSessionInbound\":\"accept\"}' --continue" ] \
+    && echo "ok   unguarded staging launch still accepts inbound" || { echo "FAIL unguarded staging launch: $c"; fails=$((fails + 1)); }
+
 echo; [ $fails -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit $fails
