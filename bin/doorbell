@@ -11,7 +11,8 @@
 # configured doorbell backends in order (bin/lib-doorbell.sh): with Claude Code,
 # first SendMessage (printed for you to send, since it is a tool call), then tmux.
 # --fallback skips straight to the scripted backends, e.g. after a SendMessage
-# that failed or was held.
+# that failed or was held. Never after one the human declined at a permission
+# prompt: that is a decision, not a failure.
 #
 # Exit status: 0 rung (or instructions printed), 1 not rung, 2 usage/refused.
 # See docs/cross-worktree-messages.md.

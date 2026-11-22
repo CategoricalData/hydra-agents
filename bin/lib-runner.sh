@@ -23,9 +23,10 @@
 #                                              agent in its tmux pane, named <session>
 #   HA_RUNNER_DOORBELLS                        doorbell backends, best first
 #                                              (bin/lib-doorbell.sh)
-#   HA_RUNNER_GUARDED_DOORBELLS                backends for guarded sessions (a
-#                                              runner that holds inbound messages
-#                                              there lists only scripted ones)
+#   HA_RUNNER_GUARDED_DOORBELLS                backends for guarded sessions (the
+#                                              same list when the guard gates only
+#                                              outgoing sends; scripted ones only if
+#                                              guarded sessions can't take native)
 #   HA_RUNNER_PROCESS                          the agent's process name, used to
 #                                              detect a live agent in a worktree
 #

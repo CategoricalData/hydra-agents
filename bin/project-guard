@@ -8,8 +8,9 @@
 #
 # A private repo carries its guard in its checked-in runner settings, so it travels
 # with every clone on every machine and can't be switched off locally. With Claude
-# Code: isolatePeerMachines: true, crossSessionInbound: privateInbound ("hold" by
-# default, or "refuse"), and a ListAgents deny. --write refuses for a public repo,
+# Code: permissions.ask for SendMessage (every send needs a human's approval, even
+# on this machine), isolatePeerMachines: true, and a ListAgents deny; inbound is
+# accepted (set at launch), unless privateInbound asks for "hold" or "refuse". --write refuses for a public repo,
 # whose checked-in settings must not carry it (a sensitive machine guards public
 # repos in worktree-local settings instead). See docs/private-projects.md.
 

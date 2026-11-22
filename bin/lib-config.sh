@@ -36,8 +36,8 @@
 #                     "sensitive" (fail closed)
 #   HA_PRIVATE / HA_SENSITIVE / HA_GUARDED  "true"/"false"; guarded = private OR
 #                     sensitive (docs/cross-worktree-messages.md § Project isolation)
-#   HA_INBOUND        inbound policy for guarded sessions: privateInbound, "hold"
-#                     (default) or "refuse"
+#   HA_INBOUND        inbound policy for guarded sessions: privateInbound, "accept"
+#                     (default), "hold" or "refuse"
 #   HA_LOCAL_CONFIG_FILE absolute path to hydra-agents.local.json, or empty
 #
 # Machine-local overrides: hydra-agents.json is checked in and shared by every
@@ -214,14 +214,14 @@ ha_load_config() {
     HA_PRIVATE=false;   [ "$HA_VISIBILITY" = private ] && HA_PRIVATE=true
     HA_SENSITIVE=false; [ "$HA_SENSITIVITY" = sensitive ] && HA_SENSITIVE=true
     HA_GUARDED=false;   { [ "$HA_PRIVATE" = true ] || [ "$HA_SENSITIVE" = true ]; } && HA_GUARDED=true
-    HA_INBOUND="$(_opt privateInbound hold)"
+    HA_INBOUND="$(_opt privateInbound accept)"
     # Sensitive machines: extra ~-relative paths to keep agents out of, and whether
     # to turn on the runner's Bash sandbox. Both are usually machine-local.
     HA_SENSITIVE_PATHS="$(_opt sensitivePaths "")"
     HA_SANDBOX_BASH="$(_opt sandboxBash false)"
     case "$HA_INBOUND" in
-        hold|refuse) ;;
-        *) echo "error: privateInbound must be \"hold\" or \"refuse\" (got \"$HA_INBOUND\")." >&2; return 5 ;;
+        accept|hold|refuse) ;;
+        *) echo "error: privateInbound must be \"accept\", \"hold\" or \"refuse\" (got \"$HA_INBOUND\")." >&2; return 5 ;;
     esac
 
     # The agent runner (Claude Code today) is an adapter, so the harness can move to

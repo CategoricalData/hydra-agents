@@ -25,8 +25,8 @@
   "_visibility_comment": "Optional: \"public\" or \"private\". Decides isolation per repo (docs/cross-worktree-messages.md § Project isolation). If absent, the harness asks `gh repo view`; if that can't tell, it treats the repo as private (fail closed). A private repo gets opaque session names (p-<hash>) and must check in its guard (bin/project-guard; docs/private-projects.md).",
   "visibility": "public",
 
-  "_privateInbound_comment": "Optional, \"hold\" (default) or \"refuse\": how guarded sessions (private repo, or sensitive machine) treat inbound cross-session messages.",
-  "privateInbound": "hold",
+  "_privateInbound_comment": "Optional, \"accept\" (default), \"hold\" or \"refuse\": how guarded sessions (private repo, or sensitive machine) treat inbound cross-session messages. The guard gates outgoing sends, so inbound is normally accepted; with Claude Code it is set at launch (--settings), the only scope where accept applies.",
+  "privateInbound": "accept",
 
   "_machineLocal_comment": "Machine-local settings go in hydra-agents.local.json beside this file (gitignored), never here: machineSensitivity (\"sensitive\" | \"open\"; default \"open\" where ~/.hydra-sandbox exists, else \"sensitive\"), sensitivePaths (extra ~-relative paths to keep agents out of), sandboxBash (\"true\" to turn on Claude Code's Bash sandbox there). Any optional field set in the local file overrides this one."
 }

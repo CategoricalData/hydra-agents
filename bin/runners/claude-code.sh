@@ -19,35 +19,42 @@
 #   - Launch: claude-remote, with --name equal to the tmux session name, so the
 #     session's SendMessage address is computable. --continue resumes.
 #   - Isolation (docs/cross-worktree-messages.md § Project isolation). The guard
-#     applies when the repo is private OR the machine is sensitive (lib-config.sh):
+#     applies when the repo is private OR the machine is sensitive (lib-config.sh).
+#     It gates OUTGOING messages only. Inbound is accepted, because the protection
+#     rests on the sender side: guarded sessions launch with --settings
+#     '{"crossSessionInbound":"accept"}' (privateInbound). It must be set at launch:
+#     project and local settings may only make crossSessionInbound stricter, so an
+#     "accept" there is ignored and the permission-mode-class rule holds cross-mode
+#     messages anyway (verified on v2.1.314). A stricter privateInbound (hold or
+#     refuse) also goes into the guard, where it does apply.
 #       * private repo: the guard is CHECKED IN to the repo's .claude/settings.json
-#         (isolatePeerMachines: true, crossSessionInbound: hold|refuse, a ListAgents
-#         deny), so it travels with every clone and can't be switched off locally.
-#         bin/project-guard writes or verifies it; spawn and recovery verify it.
-#       * guarded (private, or a sensitive machine): the same three settings are
-#         also written to the worktree's .claude/settings.local.json (machine-local,
-#         gitignored), which covers a public repo on a sensitive machine, whose
-#         checked-in file must not carry them, and a private repo whose checked-in
-#         guard is missing.
+#         (isolatePeerMachines: true, permissions.ask: SendMessage, a ListAgents deny), so it travels with every clone and can't be switched off
+#         locally: every send, even to a session on the same machine, needs a human's
+#         approval. bin/project-guard writes or verifies it; spawn and recovery verify it.
+#         Bypass mode honors the ask rule (verified on v2.1.314, as does a local
+#         "don't ask again" allow, which doesn't outrank it), so bypass stays enabled.
+#       * guarded (private, or a sensitive machine): the messaging settings are also
+#         written to the worktree's .claude/settings.local.json (machine-local,
+#         gitignored). On a sensitive machine that is isolatePeerMachines (every send
+#         to another machine needs approval, staging's included); for a private repo
+#         it adds the ask rule too, which covers a checked-in guard that is missing.
 #       * sensitive machine: filesystem-scope deny rules (Read/Edit of credential
 #         stores and personal folders under ~), optionally the Bash sandbox
 #         (sandboxBash), and a loud warning if the agent runs in bypass mode.
 #       * every worktree: a ListAgents deny unless denyListAgents is "false".
-#     The guard applies to staging too (a private project's cross-machine staging
-#     sends each need a human's approval), with ONE exemption: a public repo's
-#     staging worktree on a sensitive machine, when stagingPeers is set, gets the
-#     filesystem and listing denies but not the messaging guard, so the cross-machine
-#     staging channel works. Its sends and the messages it acts on are limited to
-#     stagingPeers by protocol (crossSessionInbound has no allowlist).
+#     No worktree is exempt: stagingPeers names whom staging may message, and on a
+#     guarded worktree each of those cross-machine sends still needs approval.
 #   - Doorbell: SendMessage is a tool the agent calls, so the claude-sendmessage
 #     backend tells the agent what to send (see lib-doorbell.sh); tmux is the
 #     fallback.
 
 HA_RUNNER_DOORBELLS="claude-sendmessage tmux"
-# Guarded sessions hold (or refuse) cross-session messages, even from their own
-# project (verified on v2.1.314: a same-machine, same-mode send was held for the
-# human's approval), so the native doorbell can't reach them: ring tmux.
-HA_RUNNER_GUARDED_DOORBELLS="tmux"
+# Guarded sessions accept inbound messages, so the native doorbell reaches them on
+# the same terms as any other session: delivered when the two sessions share a
+# permission mode, held otherwise, even with crossSessionInbound: accept (verified on
+# v2.1.314); a held one falls back to tmux. A private repo's sends each need the
+# human's approval, and a denied send is not a failed one: never ring tmux instead.
+HA_RUNNER_GUARDED_DOORBELLS="claude-sendmessage tmux"
 
 # Paths under ~ that a sensitive machine's agents may not Read or Edit. Extend with
 # the config's sensitivePaths (space-separated, ~-relative). ~/.claude/projects is
@@ -114,11 +121,16 @@ _ha_merge_json() {
     return 1
 }
 
-# The guard: confine sends to this machine, hold or refuse inbound, deny listing.
+# The guard: sends to other machines need approval, no listing, and inbound held or
+# refused only if privateInbound asks for it (an "accept" here would be ignored, so
+# the key is left out). A private repo's guard adds _HA_ASK_SEND_FILTER: every send
+# needs approval, even to this machine.
 _HA_GUARD_FILTER='.isolatePeerMachines = true
-    | .crossSessionInbound = $inbound
+    | (if $inbound == "accept" then del(.crossSessionInbound) else .crossSessionInbound = $inbound end)
     | .permissions = (.permissions // {})
     | .permissions.deny = (((.permissions.deny // []) + ["ListAgents"]) | unique)'
+_HA_ASK_SEND_FILTER='.permissions = (.permissions // {})
+    | .permissions.ask = (((.permissions.ask // []) + ["SendMessage"]) | unique)'
 
 # ha_runner_prepare_worktree <worktree-path> <branch>: write the worktree-local
 # settings described above, and verify a private repo's checked-in guard.
@@ -132,27 +144,17 @@ ha_runner_prepare_worktree() {
             | .permissions.deny = (((.permissions.deny // []) + ["ListAgents"]) | unique)' || return 1
     fi
 
-    # The one exemption: a PUBLIC repo's staging worktree on a sensitive machine, when
-    # the project has a cross-machine staging roster, keeps its messaging open so the
-    # staging-to-staging channel works. Off-machine sends are limited to stagingPeers
-    # and inbound is acted on only from them, by protocol. Workers stay guarded; a
-    # private repo's staging can't be exempted (its checked-in guard wins anyway).
-    local guard="${HA_GUARDED:-true}"
-    if [ "$guard" = true ] && [ "${HA_PRIVATE:-true}" = false ] \
-            && ha_is_standardized_branch "$branch" && [ -n "${HA_STAGING_PEERS:-}" ]; then
-        guard=staging-exempt
-    fi
-    if [ "$guard" = true ]; then
-        _ha_merge_json "$f" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-hold}" || return 1
-    elif [ "$(jq -r '.isolatePeerMachines // false' "$f" 2>/dev/null)" = true ] \
-            || [ "$(jq -r '.crossSessionInbound // "accept"' "$f" 2>/dev/null)" != accept ]; then
-        # Loosening is a human's call: report a leftover guard, don't remove it.
-        echo "note: $f still carries the messaging guard (isolatePeerMachines or crossSessionInbound)," >&2
-        if [ "$guard" = staging-exempt ]; then
-            echo "      but a public repo's staging worktree is exempt so it can reach stagingPeers." >&2
-        else
-            echo "      but this project is public on an open machine." >&2
+    if [ "${HA_GUARDED:-true}" = true ]; then
+        _ha_merge_json "$f" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-accept}" || return 1
+        if [ "${HA_PRIVATE:-true}" = true ]; then
+            _ha_merge_json "$f" "$_HA_ASK_SEND_FILTER" || return 1
         fi
+    elif [ "$(jq -r '.isolatePeerMachines // false' "$f" 2>/dev/null)" = true ] \
+            || [ "$(jq -r '.crossSessionInbound // "accept"' "$f" 2>/dev/null)" != accept ] \
+            || jq -e '(.permissions.ask // []) | index("SendMessage")' "$f" >/dev/null 2>&1; then
+        # Loosening is a human's call: report a leftover guard, don't remove it.
+        echo "note: $f still carries the messaging guard (isolatePeerMachines, crossSessionInbound" >&2
+        echo "      or a SendMessage ask), but this project is public on an open machine." >&2
         echo "      Left as is; remove those keys by hand to loosen this worktree." >&2
     fi
 
@@ -194,7 +196,8 @@ ha_runner_prepare_worktree() {
 # ha_runner_write_project_guard <worktree-root>: merge the guard into the repo's
 # checked-in .claude/settings.json (the caller commits it).
 ha_runner_write_project_guard() {
-    _ha_merge_json "$1/.claude/settings.json" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-hold}"
+    _ha_merge_json "$1/.claude/settings.json" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-accept}" \
+        && _ha_merge_json "$1/.claude/settings.json" "$_HA_ASK_SEND_FILTER"
 }
 
 # ha_runner_check_project_guard <worktree-root>: verify the checked-in guard.
@@ -208,8 +211,8 @@ ha_runner_check_project_guard() {
         echo "not checked in: .claude/settings.json is not tracked by git"; bad=1
     fi
     jq -e '.isolatePeerMachines == true' "$f" >/dev/null || { echo "missing: isolatePeerMachines: true"; bad=1; }
-    jq -e '.crossSessionInbound == "hold" or .crossSessionInbound == "refuse"' "$f" >/dev/null \
-        || { echo "missing: crossSessionInbound: \"hold\" or \"refuse\""; bad=1; }
+    jq -e '(.permissions.ask // []) | index("SendMessage")' "$f" >/dev/null \
+        || { echo "missing: permissions.ask includes \"SendMessage\""; bad=1; }
     jq -e '(.permissions.deny // []) | index("ListAgents")' "$f" >/dev/null \
         || { echo "missing: permissions.deny includes \"ListAgents\""; bad=1; }
     return "$bad"
@@ -217,9 +220,13 @@ ha_runner_check_project_guard() {
 
 # ha_runner_launch_cmd <session> <model> [--resume]: the command typed into the
 # agent's tmux pane. An older claude-remote without -n forwards it to `claude`,
-# which takes the same flag.
+# which takes the same flag; claude-remote forwards --settings too. A guarded
+# session gets its inbound policy here, the only scope where "accept" applies.
 ha_runner_launch_cmd() {
-    local session="$1" model="$2" resume=""
+    local session="$1" model="$2" resume="" inbound=""
     [ "${3:-}" = "--resume" ] && resume=" --continue"
-    printf 'claude-remote %s -m %s -n %s%s' "$session" "$model" "$session" "$resume"
+    if [ "${HA_GUARDED:-true}" = true ]; then
+        inbound=" --settings '{\"crossSessionInbound\":\"${HA_INBOUND:-accept}\"}'"
+    fi
+    printf 'claude-remote %s -m %s -n %s%s%s' "$session" "$model" "$session" "$inbound" "$resume"
 }
