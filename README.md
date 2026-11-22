@@ -122,7 +122,7 @@ Fields:
 | `stagingPeers` | Exact session names of this project's staging on other machines. |
 | `denyListAgents` | Deny session listing in every worktree. Default `"true"`. |
 | `visibility` | `"public"` or `"private"`. Absent: asks `gh`, else private (fail closed). |
-| `privateInbound` | Guarded sessions' inbound policy: `"hold"` (default) or `"refuse"`. |
+| `privateInbound` | Guarded sessions' inbound policy: `"accept"` (default), `"hold"` or `"refuse"`. |
 
 The harness scripts find this file by walking up from any worktree; they **error
 with guidance if it is absent** (no silent fallback to another project's values).
@@ -283,8 +283,17 @@ Non-negotiable, and the ones most often violated under pressure:
    titles are confidential: the harness never emits them outside the project's own
    worktrees (opaque `p-<hash>` names and titles). The harness guards a project when its **repo is
    private** (checked-in guard, opaque names) **or its machine is sensitive**
-   (local guard, limited filesystem scope). See
+   (local guard, limited filesystem scope). The guard gates **outgoing** messages only: from a
+   private repo every send needs a human's approval, even on the same machine; from a sensitive
+   machine every send to another machine does, staging's included (no exemption). Incoming
+   messages never need approval. A send the human declines is a decision: don't retry it or ring
+   tmux instead. See
    [Project isolation](docs/cross-worktree-messages.md#project-isolation).
+6. **Never name a consumer in hydra-agents.** This repo is public and serves several projects.
+   Its tracked files and commit messages never carry a consuming project's machine names
+   (hostnames, instance names, nicknames), project, session, branch or issue names, or a user's
+   home directory. Use placeholders (`<machine>`, `<host>`, `<project>`, `$HOME`, `%h` in systemd
+   units), and parameterize code that needs a real value (config, environment, or `hostname`).
 
 (Staging's push to `origin/main` is the deliberate exception to rule 2 — landing
 validated batches is its charter, guarded by the intrinsic pre-push checks, not a

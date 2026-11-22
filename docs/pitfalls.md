@@ -136,12 +136,33 @@ don't pick rows from a listing.
 ### A native message can be held instead of delivered
 `SendMessage` returns success once the message is in the recipient's queue, not once it has been
 read. The recipient may hold it for approval instead of delivering it: usually when the sender
-runs in a different permission mode, and always (in bypass mode) when the sender is a script
-rather than another session, or when the recipient sets `crossSessionInbound: "hold"`. The send
+runs in a different permission mode (and the recipient has no `crossSessionInbound: "accept"` that
+applies), always (in bypass mode) when the sender is a script rather than another session, or
+when the recipient sets `crossSessionInbound: "hold"`. The send
 result does not say so: it reports success, and a separate `[Cross-session delivery notice]`
 arrives later (held, then released, denied, or expired). A held doorbell is a lost doorbell
 until a human approves it, so on that notice run `bin/doorbell <branch> <file> --fallback`. The
 inbox file is unaffected either way: it is the message, and it waits.
+
+### `crossSessionInbound: "accept"` is ignored in project settings
+Project and local settings (`.claude/settings.json`, `.claude/settings.local.json`) may only make
+`crossSessionInbound` stricter (`accept` < `hold` < `refuse`). An `accept` there is silently
+ignored, and the permission-mode rule still holds a message from a session in the other mode
+(verified on v2.1.314). `accept` applies from `--settings`, user or managed settings, so the
+harness passes `--settings '{"crossSessionInbound":"accept"}'` when it launches a guarded session.
+A session started by hand without it holds cross-mode messages.
+
+### Bypass mode still prompts for an `ask` rule
+`permissions.ask: ["SendMessage"]` prompts even in a session started with
+`--dangerously-skip-permissions`, and "Yes, and don't ask again" doesn't silence it: that writes a
+local `allow`, which an `ask` rule outranks (verified on v2.1.314). So a private repo's guard
+gates every send without disabling bypass mode. Don't read a prompt in a bypass session as a bug.
+
+### A declined send is not a failed send
+When the human answers "No" to a `SendMessage` prompt, the send didn't fail: the human decided.
+Don't retry it, and don't run `bin/doorbell --fallback` to ring tmux instead. That routes around
+the decision (the same laundering as asking a peer to do a denied action). The inbox file is
+already delivered; leave it for the recipient's next sweep and tell your coordinator.
 
 ## Shell-tool mechanics (substrate-specific)
 
