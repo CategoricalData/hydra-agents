@@ -32,8 +32,11 @@ WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-$HOME/watchdog/logs}"
 INTERVAL_STAMP="$WATCHDOG_STATE_DIR/.last-staging-heartbeat"
 SEND_INTERVAL_SECS=600   # 10 min send cadence (staging alarms at >15 min silence)
 
+# The monitored machine's name, for the note's filename and text (hostname by
+# default; WATCHDOG_MACHINE overrides it).
+WATCHDOG_MACHINE="${WATCHDOG_MACHINE:-$(hostname -s 2>/dev/null || echo unknown)}"
 # Stable filename → each send overwrites the last in staging's inbox.
-BEAT_FNAME="watchdog-<machine>-liveness.md"
+BEAT_FNAME="watchdog-${WATCHDOG_MACHINE}-liveness.md"
 
 now_epoch=$(date -u +%s)
 ts_iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -64,21 +67,21 @@ uptime_s=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
 
 # --- compose the quiet liveness note ---
 msg_body=$(cat <<EOF
-# ♥ watchdog liveness — <machine> monitor is alive
+# ♥ watchdog liveness — ${WATCHDOG_MACHINE} monitor is alive
 
 **From:** watchdog (script-generated — there is no watchdog agent)
 **To:** ${staging_name}
 **Date:** ${ts_iso}
 **Kind:** routine liveness heartbeat (not an alert — nothing is wrong)
 
-The \`<machine>\` monitoring process is alive as of **${ts_iso}** (host uptime
+The \`${WATCHDOG_MACHINE}\` monitoring process is alive as of **${ts_iso}** (host uptime
 ${uptime_s}s). Sent about every 10 minutes.
 
 **This is a dead-man's switch — the signal is its ABSENCE.** If the newest note
 with this title is **older than 15 minutes**, the monitor or the machine has
 likely died. Treat that staleness as a condition to respond to (see the handling
 guidance for a stale/absent liveness heartbeat in \`claude/external-alerts.md\`):
-check whether \`<machine>\` is reachable and whether the last thing the logs show is a
+check whether \`${WATCHDOG_MACHINE}\` is reachable and whether the last thing the logs show is a
 freeze signature (\`~/watchdog/logs/\` and \`~/watchdog/archive/\`).
 
 This message **overwrites in place** (stable filename), so there is always

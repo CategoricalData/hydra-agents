@@ -1,6 +1,6 @@
 # watchdog/
 
-Lightweight monitoring for the `<machine>` GCE workstation, which has been freezing
+Lightweight monitoring for a GCE workstation (`<machine>`), which has been freezing
 intermittently. The goal is to leave enough forensic breadcrumbs on disk that
 the next freeze can be diagnosed after the fact, without keeping anything
 expensive or stateful running between freezes.
@@ -80,8 +80,11 @@ sudo systemctl start instance-health-monitor.timer
 # Stop monitoring (e.g., before a planned reboot):
 sudo systemctl stop instance-heartbeat-script.service instance-health-monitor.timer
 
-# Re-install systemd units after editing watchdog/systemd/*:
-sudo install -m 0644 ~/watchdog/systemd/*.service /etc/systemd/system/
+# Re-install systemd units after editing watchdog/systemd/*. The .service files carry
+# @USER@ and @HOME@ placeholders (system units can't use %h: it is root's home there):
+for u in ~/watchdog/systemd/*.service; do
+  sed -e "s|@USER@|$USER|g" -e "s|@HOME@|$HOME|g" "$u" | sudo tee "/etc/systemd/system/$(basename "$u")" >/dev/null
+done
 sudo install -m 0644 ~/watchdog/systemd/*.timer   /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
@@ -229,7 +232,7 @@ agent's inbox. The contract:
   (roughly two missed beats) to cross 15 minutes. Sending *at* 15 min against a
   15-min check would false-alarm constantly on normal timing drift.
 - **Self-overwriting, quiet.** The note uses a **stable filename**
-  (`watchdog-<machine>-liveness.md`), so each beat overwrites the last — staging's
+  (`watchdog-<machine>-liveness.md`, `<machine>` from `hostname -s`), so each beat overwrites the last — staging's
   inbox holds exactly one liveness note whose freshness is the whole point, not
   ~144 files a day. Unlike a danger-alert it drops **no attention-marker**: a
   routine beat must not cry wolf.

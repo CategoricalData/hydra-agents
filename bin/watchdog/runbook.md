@@ -4,7 +4,7 @@
 > documents are `~/watchdog/README.md` (entry point) and
 > `~/watchdog/agent-spec.md` (the watchdog agent contract — formerly
 > `~/watchdog-agent.md`). All logs and scripts moved under `~/watchdog/` on
-> 2026-06-15; old `$HOME/instance-*` paths no longer exist.
+> 2026-06-15; old `~/instance-*` paths no longer exist.
 
 > **READ THIS WHOLE FILE BEFORE DOING ANYTHING.** The previous agent ran an
 > in-session `/loop` heartbeat for ~930 turns and became a major billing/quota
@@ -91,8 +91,8 @@ your context window on the actual analysis, not on rediscovering the setup.
 
 ## Why this exists
 
-Josh's GCE workstation (`<machine>`) has crashed 5+ times in roughly 5 days
-(2026-06-07 → 2026-06-12). He runs multiple concurrent Claude Code sessions and
+The GCE workstation (`<machine>`) has crashed 5+ times in roughly 5 days
+(2026-06-07 → 2026-06-12). Its user runs multiple concurrent Claude Code sessions and
 sometimes heavy GHC/`stack` builds. The crashes don't always correlate with
 obvious high load. We set up this monitor so the next crash leaves enough
 forensic breadcrumbs in a persistent log file to actually diagnose it.
@@ -162,7 +162,7 @@ times per day.
 - Zone: `<zone>`, project `<gcp-project>`.
 - OS: Debian 12, kernel `6.1.0-49-cloud-amd64` (Debian 6.1.174-1).
 - Hypervisor: KVM (Google host).
-- Primary user: `josh` (uid 1000). `loginctl Linger=no` — user systemd manager
+- Primary user: `<user>` (uid 1000). `loginctl Linger=no` — user systemd manager
   does NOT persist after logout, which is why we use system-level units.
 
 ## Reboot pattern observed so far
@@ -274,7 +274,7 @@ box died.
 Useful queries:
 
 ```bash
-echo "=== last script tick ===";  tail -1 $HOME/watchdog/logs/heartbeat.log
+echo "=== last script tick ===";  tail -1 ~/watchdog/logs/heartbeat.log
 echo "=== current time     ===";  date -u +'%Y-%m-%dT%H:%M:%SZ'
 echo "=== boot table       ===";  sudo journalctl --list-boots | tail -10
 
@@ -289,7 +289,7 @@ awk '
     prev = cur
   }
   END { printf "max gap = %.1f s before line %d at ts=%s\n", maxd, gap_line, gap_ts }
-' $HOME/watchdog/logs/heartbeat.log
+' ~/watchdog/logs/heartbeat.log
 ```
 
 ## Restart commands (run only after analysis, and only if Josh asks)
@@ -370,23 +370,24 @@ on their own and waste tokens.
 
 ## Files & where they live
 
-- `$HOME/watchdog/README.md` — entry point for the directory.
-- `$HOME/watchdog/agent-spec.md` — **the operating spec for any future
+- `~/watchdog/README.md` — entry point for the directory.
+- `~/watchdog/agent-spec.md` — **the operating spec for any future
   watchdog agent.** Read it. It supersedes anything in this file that
   conflicts.
-- `$HOME/watchdog/runbook.md` — this document.
-- `$HOME/watchdog/logs/health.log` — snapshot log, rotated at 50 MB
+- `~/watchdog/runbook.md` — this document.
+- `~/watchdog/logs/health.log` — snapshot log, rotated at 50 MB
   (`.1` backup).
-- `$HOME/watchdog/bin/health-monitor.sh` — the snapshot script.
-- `$HOME/watchdog/logs/heartbeat.log` — script-side heartbeat,
+- `~/watchdog/bin/health-monitor.sh` — the snapshot script.
+- `~/watchdog/logs/heartbeat.log` — script-side heartbeat,
   1 line / 5 s, rotated at 20 MB.
-- `$HOME/watchdog/bin/heartbeat.sh` — the heartbeat loop.
-- `$HOME/watchdog/deprecated/claude-heartbeat.log` — **DEPRECATED**
+- `~/watchdog/bin/heartbeat.sh` — the heartbeat loop.
+- `~/watchdog/deprecated/claude-heartbeat.log` — **DEPRECATED**
   Claude-side heartbeat log. Forensic value only; do not append.
-- `$HOME/watchdog/deprecated/claude-heartbeat.sh` — **DEPRECATED**
+- `~/watchdog/deprecated/claude-heartbeat.sh` — **DEPRECATED**
   Claude-side heartbeat script. Do not invoke.
-- `$HOME/watchdog/systemd/*` — canonical copies of the three installed
-  unit files; edit here, then `sudo install` to `/etc/systemd/system/`.
+- `~/watchdog/systemd/*` — canonical copies of the three installed
+  unit files; edit here, then install them to `/etc/systemd/system/`, filling in their
+  `@USER@` and `@HOME@` placeholders (README.md shows the commands).
 - `/etc/systemd/system/instance-health-monitor.service` — snapshot oneshot.
 - `/etc/systemd/system/instance-health-monitor.timer` — snapshot timer
   (`static`, manual start).
