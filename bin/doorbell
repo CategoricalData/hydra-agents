@@ -2,8 +2,9 @@
 # doorbell — tell a sibling agent that a message file is waiting in its inbox.
 #
 # Usage, from your own worktree, AFTER copy → verify → archive:
-#   doorbell <recipient-branch> <filename> [--fallback]
+#   doorbell <recipient-worktree> <filename> [--fallback]
 #
+# <recipient-worktree> is the recipient's worktree folder name (usually its branch).
 # Computes the recipient's session name from its branch (ha_session_name_for, the
 # same rule spawn and recovery use), so nothing is discovered by listing sessions.
 # Refuses to ring unless <filename> is present in the recipient's inbox: the file
@@ -27,7 +28,7 @@ ha_load_runner || exit 2
 . "$HERE/lib-doorbell.sh"
 
 if [ $# -lt 2 ]; then
-    sed -n '2,17p' "$0" >&2
+    sed -n '2,19p' "$0" >&2
     exit 2
 fi
 recipient_branch="$1" filename="$2" fallback="${3:-}"
@@ -48,12 +49,13 @@ if [ ! -f "$recipient_wt/claude-hydra-messages/inbox/$filename" ]; then
 fi
 
 session="$(ha_session_name_for "$recipient_branch")"
-if [ "$HA_PRIVATE" = true ]; then
-    # A private project's doorbell names nothing: the sender by its opaque session
-    # name, the file by its timestamp only (the filename carries the sender's
-    # branch), and no paths. The recipient resolves the sender with
-    # `session-name --resolve <name>` and finds the file in its own inbox.
-    text="$(ha_doorbell_text_private "$(ha_session_name_for "$sender_branch")" "${filename:0:20}")"
+if [ "${HA_OPAQUE_NAMES:-false}" = true ]; then
+    # With opaque names the doorbell names nothing: the sender by its opaque session
+    # name (computed from its worktree folder, as recovery names it), the file by its
+    # timestamp only (the filename carries the sender's branch), and no paths. The
+    # recipient resolves the sender with `session-name --resolve <name>` and finds
+    # the file in its own inbox.
+    text="$(ha_doorbell_text_private "$(ha_session_name_for "$(basename "$me")")" "${filename:0:20}")"
 else
     text="$(ha_doorbell_text "$sender_branch" "$filename" "$reply_dir")"
 fi
