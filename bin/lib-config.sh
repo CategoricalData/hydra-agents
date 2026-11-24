@@ -241,7 +241,9 @@ ha_load_config() {
     HA_INBOUND="$(_opt privateInbound accept)"
     # Sensitive machines: extra ~-relative paths to keep agents out of, and whether
     # to turn on the runner's Bash sandbox. Both are usually machine-local.
-    HA_SENSITIVE_PATHS="$(_opt sensitivePaths "")"
+    # HYDRA_AGENTS_SENSITIVE_PATHS describes the whole machine, so it applies to every
+    # worktree and project on it; sensitivePaths adds to it.
+    HA_SENSITIVE_PATHS="${HYDRA_AGENTS_SENSITIVE_PATHS:-} $(_opt sensitivePaths "")"
     HA_SANDBOX_BASH="$(_opt sandboxBash false)"
     case "$HA_INBOUND" in
         accept|hold|refuse) ;;

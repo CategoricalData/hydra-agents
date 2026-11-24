@@ -56,12 +56,14 @@ HA_RUNNER_DOORBELLS="claude-sendmessage tmux"
 # not a failed one: never ring tmux instead.
 HA_RUNNER_GUARDED_DOORBELLS="claude-sendmessage tmux"
 
-# Paths under ~ that a sensitive machine's agents may not Read or Edit. Extend with
-# the config's sensitivePaths (space-separated, ~-relative). ~/.claude/projects is
-# deliberately absent: a session reads its own (large) tool results from there.
+# Paths under ~ that a sensitive machine's agents may not Read or Edit: credential
+# stores that sit at the same place on every OS. OS- and user-specific folders
+# (a desktop, a mail store, personal documents) are the machine's to declare, in
+# sensitivePaths or HYDRA_AGENTS_SENSITIVE_PATHS (space-separated, ~-relative).
+# ~/.claude/projects is deliberately absent: a session reads its own (large) tool
+# results from there.
 HA_RUNNER_SENSITIVE_PATHS=".ssh .gnupg .aws .azure .config/gcloud .config/gh .kube .docker
-.password-store .netrc .git-credentials .npmrc .pypirc Documents Desktop Downloads Pictures
-Library/Mail Library/Messages"
+.password-store .netrc .git-credentials .npmrc .pypirc"
 HA_RUNNER_PROCESS="claude"   # the agent's process name, for live-agent checks
 
 HA_MIN_CLAUDE_MESSAGING_VERSION="2.1.224"

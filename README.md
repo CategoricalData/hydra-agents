@@ -130,7 +130,8 @@ with guidance if it is absent** (no silent fallback to another project's values)
 
 Machine-local settings go in `hydra-agents.local.json` beside it (gitignore that file):
 `machineSensitivity` (`"sensitive"` or `"open"`; default `"open"` only on a machine with
-`~/.hydra-sandbox`), `sensitivePaths`, `sandboxBash`. Any optional field set there
+`~/.hydra-sandbox`), `sensitivePaths` (also settable machine-wide with the
+`HYDRA_AGENTS_SENSITIVE_PATHS` environment variable), `sandboxBash`. Any optional field set there
 overrides `hydra-agents.json`. Isolation follows from the repo's visibility and the
 machine's sensitivity: see
 [Project isolation](docs/cross-worktree-messages.md#project-isolation), and for a

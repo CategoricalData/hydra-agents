@@ -475,9 +475,13 @@ project. The adapter (`bin/runners/claude-code.sh`) implements the contract with
   `disableBypassPermissionsMode: "disable"` in its checked-in settings and give its agents
   per-project `allow` lists for the tools they need, so they don't stall on every prompt.
 - **Sensitive machine: filesystem scope.** The adapter adds `Read(...)`/`Edit(...)` deny rules for
-  credential stores and personal folders under `~` (SSH, GPG, cloud and `gh` credentials, Docker
-  and Kubernetes config, `.netrc`, `.git-credentials`, package-registry tokens, Documents,
-  Desktop, Downloads, Pictures, Mail, Messages), plus anything in `sensitivePaths`. Read and Edit
+  credential stores under `~` that sit at the same place on every OS (SSH, GPG, cloud and `gh`
+  credentials, Docker and Kubernetes config, `.netrc`, `.git-credentials`, package-registry
+  tokens), plus the machine's own list: the `HYDRA_AGENTS_SENSITIVE_PATHS` environment variable
+  (space-separated, `~`-relative; it covers every worktree on the machine) and `sensitivePaths`.
+  OS- and user-specific folders such as a desktop, a mail store or personal documents belong
+  there, not in the harness. Leave out any folder agents must work in, such as the one the
+  browser downloads into. Read and Edit
   rules govern Claude Code's file tools, not what a Bash command can open, so set `sandboxBash` to
   `"true"` (machine-locally) to turn on Claude Code's sandbox for Bash, which adds OS-level
   filesystem and network limits; check that the project's builds still work under it. Transcripts
