@@ -7,12 +7,15 @@
 #   project-guard --write    # merge the guard into .claude/settings.json, then commit it
 #
 # A private repo carries its guard in its checked-in runner settings, so it travels
-# with every clone on every machine and can't be switched off locally. With Claude
-# Code: permissions.ask for SendMessage (every send needs a human's approval, even
-# on this machine), isolatePeerMachines: true, and a ListAgents deny; inbound is
-# accepted (set at launch), unless privateInbound asks for "hold" or "refuse". --write refuses for a public repo,
-# whose checked-in settings must not carry it (a sensitive machine guards public
-# repos in worktree-local settings instead). See docs/private-projects.md.
+# with every clone on every machine. With Claude Code: the peer-scope PreToolUse hook
+# (sends to this project's own sessions go through; any other send, and ListAgents,
+# asks the human) and isolatePeerMachines: true (every send to another machine asks).
+# Inbound is accepted (set at launch), unless privateInbound asks for "hold" or
+# "refuse". --check also flags the earlier guard's leftovers (an ask rule for
+# SendMessage, which would outrank the hook, and a ListAgents deny); --write removes
+# them. --write refuses for a public repo, whose checked-in settings must not carry
+# it (a sensitive machine guards public repos in worktree-local settings instead).
+# See docs/private-projects.md.
 
 set -uo pipefail
 
@@ -30,7 +33,7 @@ case "${1:---check}" in
             echo "project-guard: the checked-in guard is complete ($HA_VISIBILITY repo)."
             exit 0
         fi
-        [ "$HA_PRIVATE" = true ] && echo "project-guard: fix with: project-guard --write, then commit .claude/settings.json" >&2
+        [ "$HA_PRIVATE" = true ] && echo "project-guard: fix with: project-guard --write, then commit .claude/settings.json and merge it" >&2
         exit 1
         ;;
     --write)
@@ -44,7 +47,7 @@ case "${1:---check}" in
         echo "project-guard: wrote the guard to $root/.claude/settings.json; now commit it and merge to main."
         ;;
     *)
-        sed -n '2,15p' "$0" >&2
+        sed -n '2,18p' "$0" >&2
         exit 2
         ;;
 esac

@@ -18,32 +18,32 @@
 #     native Windows; this check uses the Unix minimum).
 #   - Launch: claude-remote, with --name equal to the tmux session name, so the
 #     session's SendMessage address is computable. --continue resumes.
-#   - Isolation (docs/cross-worktree-messages.md § Project isolation). The guard
-#     applies when the repo is private OR the machine is sensitive (lib-config.sh).
-#     It gates OUTGOING messages only. Inbound is accepted, because the protection
-#     rests on the sender side: guarded sessions launch with --settings
+#   - Scoped messaging, every worktree (docs/cross-worktree-messages.md § Project
+#     isolation): a PreToolUse hook (bin/claude-hooks/peer-scope.sh) on SendMessage
+#     and ListAgents. A send to one of this project's own sessions goes through
+#     without a prompt; a send to any other session asks the human (it isn't
+#     blocked); ListAgents asks too (or is denied, listAgents: "deny"), because it
+#     lists every project on the account. An ask rule for SendMessage would outrank
+#     the hook's "allow", so the adapter removes the earlier "every send asks" rule.
+#   - Isolation, guarded worktrees (the repo is private OR the machine is sensitive,
+#     lib-config.sh). Inbound is accepted, because the protection rests on the
+#     sender side: guarded sessions launch with --settings
 #     '{"crossSessionInbound":"accept"}' (privateInbound). It must be set at launch:
 #     project and local settings may only make crossSessionInbound stricter, so an
 #     "accept" there is ignored and the permission-mode-class rule holds cross-mode
 #     messages anyway (verified on v2.1.314). A stricter privateInbound (hold or
 #     refuse) also goes into the guard, where it does apply.
-#       * private repo: the guard is CHECKED IN to the repo's .claude/settings.json
-#         (isolatePeerMachines: true, permissions.ask: SendMessage, a ListAgents deny), so it travels with every clone and can't be switched off
-#         locally: every send, even to a session on the same machine, needs a human's
-#         approval. bin/project-guard writes or verifies it; spawn and recovery verify it.
-#         Bypass mode honors the ask rule (verified on v2.1.314, as does a local
-#         "don't ask again" allow, which doesn't outrank it), so bypass stays enabled.
-#       * guarded (private, or a sensitive machine): the messaging settings are also
-#         written to the worktree's .claude/settings.local.json (machine-local,
-#         gitignored). On a sensitive machine that is isolatePeerMachines (every send
-#         to another machine needs approval, staging's included); for a private repo
-#         it adds the ask rule too, which covers a checked-in guard that is missing.
+#       * private repo: the guard (isolatePeerMachines: true and the peer-scope hook)
+#         is CHECKED IN to the repo's .claude/settings.json, so it travels with every
+#         clone. bin/project-guard writes or verifies it; spawn and recovery verify it.
+#       * guarded: the same settings also go to the worktree's
+#         .claude/settings.local.json (machine-local, gitignored): isolatePeerMachines
+#         makes every send to another machine need approval, staging's included.
 #       * sensitive machine: filesystem-scope deny rules (Read/Edit of credential
 #         stores and personal folders under ~), optionally the Bash sandbox
 #         (sandboxBash), and a loud warning if the agent runs in bypass mode.
-#       * every worktree: a ListAgents deny unless denyListAgents is "false".
-#     No worktree is exempt: stagingPeers names whom staging may message, and on a
-#     guarded worktree each of those cross-machine sends still needs approval.
+#     stagingPeers names this project's staging sessions on other machines: the hook
+#     allows them, and isolatePeerMachines still asks for each of those sends.
 #   - Doorbell: SendMessage is a tool the agent calls, so the claude-sendmessage
 #     backend tells the agent what to send (see lib-doorbell.sh); tmux is the
 #     fallback.
@@ -52,8 +52,8 @@ HA_RUNNER_DOORBELLS="claude-sendmessage tmux"
 # Guarded sessions accept inbound messages, so the native doorbell reaches them on
 # the same terms as any other session: delivered when the two sessions share a
 # permission mode, held otherwise, even with crossSessionInbound: accept (verified on
-# v2.1.314); a held one falls back to tmux. A private repo's sends each need the
-# human's approval, and a denied send is not a failed one: never ring tmux instead.
+# v2.1.314); a held one falls back to tmux. A send the human declined at a prompt is
+# not a failed one: never ring tmux instead.
 HA_RUNNER_GUARDED_DOORBELLS="claude-sendmessage tmux"
 
 # Paths under ~ that a sensitive machine's agents may not Read or Edit. Extend with
@@ -121,16 +121,36 @@ _ha_merge_json() {
     return 1
 }
 
-# The guard: sends to other machines need approval, no listing, and inbound held or
-# refused only if privateInbound asks for it (an "accept" here would be ignored, so
-# the key is left out). A private repo's guard adds _HA_ASK_SEND_FILTER: every send
-# needs approval, even to this machine.
+# The guard (guarded worktrees and a private repo's checked-in settings): sends to
+# other machines need approval, and inbound is held or refused only if
+# privateInbound asks for it (an "accept" here would be ignored, so the key is left
+# out).
 _HA_GUARD_FILTER='.isolatePeerMachines = true
-    | (if $inbound == "accept" then del(.crossSessionInbound) else .crossSessionInbound = $inbound end)
-    | .permissions = (.permissions // {})
-    | .permissions.deny = (((.permissions.deny // []) + ["ListAgents"]) | unique)'
-_HA_ASK_SEND_FILTER='.permissions = (.permissions // {})
-    | .permissions.ask = (((.permissions.ask // []) + ["SendMessage"]) | unique)'
+    | (if $inbound == "accept" then del(.crossSessionInbound) else .crossSessionInbound = $inbound end)'
+
+# Scoped messaging (every worktree): SendMessage and ListAgents go through
+# bin/claude-hooks/peer-scope.sh, which allows sends to this project's own sessions
+# and asks the human for anything else. An ask rule for SendMessage outranks a
+# hook's "allow", so the filter also removes the earlier "every send asks" rule and
+# the ListAgents deny (re-added only for listAgents: "deny"), and replaces any older
+# peer-scope hook entry with this one. $cmd is the hook command; $deny_list is
+# "true" to keep ListAgents denied.
+_HA_SCOPE_FILTER='.permissions = (.permissions // {})
+    | .permissions.ask = ((.permissions.ask // []) - ["SendMessage"])
+    | (if (.permissions.ask | length) == 0 then del(.permissions.ask) else . end)
+    | .permissions.deny = ((.permissions.deny // []) - ["ListAgents"]
+        + (if $deny_list == "true" then ["ListAgents"] else [] end))
+    | .hooks = (.hooks // {})
+    | .hooks.PreToolUse = (((.hooks.PreToolUse // [])
+        | map(select((.hooks // []) | all((.command // "") | test("peer-scope") | not))))
+        + [{matcher: "SendMessage|ListAgents", hooks: [{type: "command", command: $cmd}]}])'
+
+# _ha_scope_merge <settings-file> <hook-command>
+_ha_scope_merge() {
+    local deny_list=false
+    [ "${HA_LIST_AGENTS:-ask}" = deny ] && deny_list=true
+    _ha_merge_json "$1" "$_HA_SCOPE_FILTER" --arg cmd "$2" --arg deny_list "$deny_list"
+}
 
 # ha_runner_prepare_worktree <worktree-path> <branch>: write the worktree-local
 # settings described above, and verify a private repo's checked-in guard.
@@ -139,23 +159,18 @@ ha_runner_prepare_worktree() {
     local wt="$1" branch="$2" f p rules mode
     f="$wt/.claude/settings.local.json"
 
-    if [ "${HA_DENY_LIST_AGENTS:-true}" != "false" ]; then
-        _ha_merge_json "$f" '.permissions = (.permissions // {})
-            | .permissions.deny = (((.permissions.deny // []) + ["ListAgents"]) | unique)' || return 1
-    fi
+    # Every worktree: scoped messaging, with the hook from this checkout (an
+    # absolute path is fine in machine-local settings).
+    _ha_scope_merge "$f" "\"$HA_AGENTS_DIR/bin/claude-hooks/peer-scope.sh\"" || return 1
 
     if [ "${HA_GUARDED:-true}" = true ]; then
         _ha_merge_json "$f" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-accept}" || return 1
-        if [ "${HA_PRIVATE:-true}" = true ]; then
-            _ha_merge_json "$f" "$_HA_ASK_SEND_FILTER" || return 1
-        fi
     elif [ "$(jq -r '.isolatePeerMachines // false' "$f" 2>/dev/null)" = true ] \
-            || [ "$(jq -r '.crossSessionInbound // "accept"' "$f" 2>/dev/null)" != accept ] \
-            || jq -e '(.permissions.ask // []) | index("SendMessage")' "$f" >/dev/null 2>&1; then
+            || [ "$(jq -r '.crossSessionInbound // "accept"' "$f" 2>/dev/null)" != accept ]; then
         # Loosening is a human's call: report a leftover guard, don't remove it.
-        echo "note: $f still carries the messaging guard (isolatePeerMachines, crossSessionInbound" >&2
-        echo "      or a SendMessage ask), but this project is public on an open machine." >&2
-        echo "      Left as is; remove those keys by hand to loosen this worktree." >&2
+        echo "note: $f still carries the messaging guard (isolatePeerMachines or crossSessionInbound)," >&2
+        echo "      but this project is public on an open machine. Left as is; remove those keys" >&2
+        echo "      by hand to loosen this worktree." >&2
     fi
 
     if [ "${HA_SENSITIVE:-true}" = true ]; then
@@ -184,20 +199,32 @@ ha_runner_prepare_worktree() {
 
     if [ "${HA_PRIVATE:-true}" = true ] && ! ha_runner_check_project_guard "$wt" >/dev/null 2>&1; then
         echo "" >&2
-        echo "WARNING: this project is PRIVATE, but its checked-in guard is missing or incomplete in" >&2
-        echo "         $wt/.claude/settings.json. This worktree is guarded by its local settings," >&2
+        echo "WARNING: this project is PRIVATE, but its checked-in guard is missing, incomplete or stale" >&2
+        echo "         in $wt/.claude/settings.json. This worktree is guarded by its local settings," >&2
         echo "         but other clones are not. Run bin/project-guard --write in a worktree, commit" >&2
-        echo "         .claude/settings.json, and merge it (bin/project-guard --check shows what's missing)." >&2
+        echo "         .claude/settings.json, and merge it (bin/project-guard --check shows what's wrong)." >&2
         echo "" >&2
     fi
     return 0
+}
+
+# _ha_checked_in_hook_cmd: the peer-scope hook command for checked-in settings,
+# relative to the worktree root (agentsDir from the config; an absolute agentsDir
+# stays absolute).
+_ha_checked_in_hook_cmd() {
+    local adir
+    adir="$(jq -r '.agentsDir // "./agents"' "$HA_CONFIG_FILE" 2>/dev/null)"
+    case "$adir" in
+        /*) printf '"%s/bin/claude-hooks/peer-scope.sh"' "$adir" ;;
+        *)  printf '"$CLAUDE_PROJECT_DIR"/%s/bin/claude-hooks/peer-scope.sh' "${adir#./}" ;;
+    esac
 }
 
 # ha_runner_write_project_guard <worktree-root>: merge the guard into the repo's
 # checked-in .claude/settings.json (the caller commits it).
 ha_runner_write_project_guard() {
     _ha_merge_json "$1/.claude/settings.json" "$_HA_GUARD_FILTER" --arg inbound "${HA_INBOUND:-accept}" \
-        && _ha_merge_json "$1/.claude/settings.json" "$_HA_ASK_SEND_FILTER"
+        && _ha_scope_merge "$1/.claude/settings.json" "$(_ha_checked_in_hook_cmd)"
 }
 
 # ha_runner_check_project_guard <worktree-root>: verify the checked-in guard.
@@ -211,10 +238,14 @@ ha_runner_check_project_guard() {
         echo "not checked in: .claude/settings.json is not tracked by git"; bad=1
     fi
     jq -e '.isolatePeerMachines == true' "$f" >/dev/null || { echo "missing: isolatePeerMachines: true"; bad=1; }
-    jq -e '(.permissions.ask // []) | index("SendMessage")' "$f" >/dev/null \
-        || { echo "missing: permissions.ask includes \"SendMessage\""; bad=1; }
-    jq -e '(.permissions.deny // []) | index("ListAgents")' "$f" >/dev/null \
-        || { echo "missing: permissions.deny includes \"ListAgents\""; bad=1; }
+    jq -e '[.hooks.PreToolUse // [] | .[] | .hooks // [] | .[] | .command // "" | select(test("peer-scope"))] | length > 0' "$f" >/dev/null \
+        || { echo "missing: the peer-scope PreToolUse hook (SendMessage|ListAgents)"; bad=1; }
+    if jq -e '(.permissions.ask // []) | index("SendMessage")' "$f" >/dev/null; then
+        echo "stale: permissions.ask includes \"SendMessage\" (it outranks the hook, so every send would ask)"; bad=1
+    fi
+    if [ "${HA_LIST_AGENTS:-ask}" != deny ] && jq -e '(.permissions.deny // []) | index("ListAgents")' "$f" >/dev/null; then
+        echo "stale: permissions.deny includes \"ListAgents\" (listAgents is \"ask\")"; bad=1
+    fi
     return "$bad"
 }
 
