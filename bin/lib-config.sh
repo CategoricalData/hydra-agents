@@ -26,7 +26,10 @@
 #   HA_SPAWN_MODEL    default spawn model tier (spawnModel)
 #   HA_STAGING_PEERS  space-separated session names of this project's staging
 #                     sessions on other machines (stagingPeers; may be empty)
-#   HA_DENY_LIST_AGENTS "true" unless denyListAgents is "false"
+#   HA_LIST_AGENTS    "ask" (default) or "deny": what the peer-scope hook does with
+#                     the account-wide session listing (listAgents)
+#   HA_OPAQUE_NAMES   "true" only if opaqueNames is true: p-<hash> names instead of
+#                     readable <prefix><branch> ones (default "false")
 #   HA_VISIBILITY     "private" or "public": the repository's visibility, from
 #                     `visibility`, else `gh repo view`, else "private" (fail closed)
 #   HA_SENSITIVITY    "sensitive" or "open": this MACHINE's sensitivity, from
@@ -129,6 +132,16 @@ ha_load_config() {
         [ -n "$_o" ] || _o="$(jq -re --arg k "$1" '.[$k] | strings // empty' "$HA_CONFIG_FILE" 2>/dev/null || true)"
         if [ -z "$_o" ]; then printf '%s' "$2"; else printf '%s' "$_o"; fi
     }
+    # _optbool KEY DEFAULT: like _opt, but a JSON boolean counts too ("true"/"false").
+    _optbool() {
+        local _o="" _f
+        for _f in "$HA_LOCAL_CONFIG_FILE" "$HA_CONFIG_FILE"; do
+            [ -n "$_f" ] || continue
+            _o="$(jq -r --arg k "$1" '.[$k] | if type == "boolean" then tostring elif type == "string" then . else empty end' "$_f" 2>/dev/null || true)"
+            [ -n "$_o" ] && break
+        done
+        case "$_o" in true|false) printf '%s' "$_o" ;; *) printf '%s' "$2" ;; esac
+    }
 
     HA_ISSUE_URL_BASE="$(_req issueUrlBase)" || return 5
     HA_ISSUE_REPO="$(_req issueRepo)"        || return 5
@@ -161,9 +174,20 @@ ha_load_config() {
     # space-separated string.
     HA_STAGING_PEERS="$(jq -r '.stagingPeers // empty | if type == "array" then join(" ") else . end' \
         "$HA_CONFIG_FILE" 2>/dev/null || true)"
-    # Deny ListAgents in every worktree's local settings (default). Set
-    # denyListAgents to "false" only where the user-level settings already deny it.
-    HA_DENY_LIST_AGENTS="$(_opt denyListAgents true)"
+    # Scoped messaging (docs/cross-worktree-messages.md § Project isolation): every
+    # worktree routes SendMessage and ListAgents through bin/claude-hooks/peer-scope.sh.
+    # A send to one of this project's own sessions goes through without a prompt; any
+    # other recipient asks the human. listAgents: "ask" (default; the account-wide
+    # listing shows other projects, so the human approves each one) or "deny".
+    HA_LIST_AGENTS="$(_opt listAgents ask)"
+    case "$HA_LIST_AGENTS" in
+        ask|deny) ;;
+        *) echo "error: listAgents must be \"ask\" or \"deny\" (got \"$HA_LIST_AGENTS\")." >&2; return 5 ;;
+    esac
+    # Opaque names (opt-in): "p-<hash>" session, tmux, Remote Control and terminal
+    # names instead of "<prefix><branch>". Off by default: scoping, not renaming, is
+    # what keeps projects apart, and readable names matter to the human.
+    HA_OPAQUE_NAMES="$(_optbool opaqueNames false)"
     # Isolation inputs (docs/cross-worktree-messages.md § Project isolation):
     # the guard applies when the repo is private OR the machine is sensitive.
     HA_VISIBILITY="$(_opt visibility "")"
@@ -246,11 +270,11 @@ ha_load_config() {
 
     export HA_PROJECT_ROOT HA_CONFIG_FILE HA_AGENTS_DIR HA_AGENTS_VERSION \
            HA_ISSUE_URL_BASE HA_ISSUE_REPO HA_AGENT_GUIDE HA_SPAWN_MODEL \
-           HA_SESSION_PREFIX HA_STAGING_PEERS HA_DENY_LIST_AGENTS \
+           HA_SESSION_PREFIX HA_STAGING_PEERS HA_LIST_AGENTS HA_OPAQUE_NAMES \
            HA_LOCAL_CONFIG_FILE HA_VISIBILITY HA_VISIBILITY_CACHE HA_SENSITIVITY \
            HA_PRIVATE HA_SENSITIVE HA_GUARDED HA_INBOUND HA_SENSITIVE_PATHS HA_SANDBOX_BASH \
            HA_STANDARDIZED_BRANCHES HA_MACHINE HA_RUNNER HA_DOORBELLS
-    unset -f _req _opt   # don't leak these generic helper names into the caller's shell
+    unset -f _req _opt _optbool   # don't leak these generic helper names into the caller's shell
     return 0
 }
 
@@ -260,10 +284,10 @@ ha_load_config() {
 # Spawn, recovery and the doorbell all use this, so a sender computes a recipient's
 # name instead of discovering it.
 #
-# A PRIVATE project's names are opaque: "p-" plus a short hash of the repository
-# and that descriptive name. Session names are visible account-wide (in any
-# listing, on any machine), so a descriptive name would leak the project and the
-# branch. The hash is deterministic, so a sender still computes it.
+# Names are readable by default. With "opaqueNames": true they are "p-" plus a short
+# hash of the repository and that descriptive name (deterministic, so a sender still
+# computes it). Isolation between projects comes from scoping sends and listings
+# (bin/claude-hooks/peer-scope.sh), not from the names.
 ha_session_name_for() {
     local _std _n="${HA_SESSION_PREFIX:-}$1"
     for _std in ${HA_STANDARDIZED_BRANCHES:-staging}; do
@@ -272,7 +296,7 @@ ha_session_name_for() {
             break
         fi
     done
-    if [ "${HA_PRIVATE:-true}" = true ]; then
+    if [ "${HA_OPAQUE_NAMES:-false}" = true ]; then
         _n="p-$(ha_short_hash "${HA_ISSUE_REPO:-}/$_n")" || return 1
     fi
     printf '%s' "$_n"
