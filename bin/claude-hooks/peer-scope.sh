@@ -58,6 +58,9 @@ if [ "$tool" = ListAgents ]; then
 fi
 
 to="$(jq -r '.tool_input.to // .tool_input.recipient // .tool_input.target // empty' <<<"$input" 2>/dev/null)"
+# The runner appends " [ref]" (a short hex session id) when two sessions share a name, e.g. a stale
+# offline entry left by an earlier session. The ref only disambiguates; the name decides membership.
+to="$(sed -E 's/ \[[0-9a-f]{4,}\]$//' <<<"$to")"
 [ -n "$to" ] || decide ask "SendMessage with no recognizable recipient field."
 
 if [[ "$to" =~ ^a[0-9a-f]{16}$ ]]; then
