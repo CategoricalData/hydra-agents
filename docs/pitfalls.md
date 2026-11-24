@@ -152,11 +152,14 @@ ignored, and the permission-mode rule still holds a message from a session in th
 harness passes `--settings '{"crossSessionInbound":"accept"}'` when it launches a guarded session.
 A session started by hand without it holds cross-mode messages.
 
-### Bypass mode still prompts for an `ask` rule
-`permissions.ask: ["SendMessage"]` prompts even in a session started with
-`--dangerously-skip-permissions`, and "Yes, and don't ask again" doesn't silence it: that writes a
-local `allow`, which an `ask` rule outranks (verified on v2.1.314). So a private repo's guard
-gates every send without disabling bypass mode. Don't read a prompt in a bypass session as a bug.
+### An `ask` rule outranks the peer-scope hook
+`permissions.ask: ["SendMessage"]` prompts for every send even when the peer-scope hook returns
+`allow` (Claude Code's precedence: a hook doesn't bypass permission rules), and a `ListAgents`
+deny refuses what the hook would ask about. The earlier guard wrote both, so a worktree or a
+checked-in guard that still carries them prompts for sends inside the project. Spawn, recovery
+and `project-guard --write` remove them; `project-guard --check` reports them as stale. The same
+`ask` rule also prompts in bypass mode, and "Yes, and don't ask again" doesn't silence it
+(verified on v2.1.314).
 
 ### A declined send is not a failed send
 When the human answers "No" to a `SendMessage` prompt, the send didn't fail: the human decided.

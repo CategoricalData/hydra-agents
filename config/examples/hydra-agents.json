@@ -19,10 +19,13 @@
   "_stagingPeers_comment": "Optional. The exact session names of this project's staging sessions on OTHER machines: the only off-machine recipients a staging session may message (docs/cross-worktree-messages.md § Project isolation). Use the name other machines resolve, which is the Remote Control label; claude-remote launches use the same string for both. Never fill this from a ListAgents listing. Example values are placeholders.",
   "stagingPeers": ["hydra-staging-machine1", "hydra-staging-machine2"],
 
-  "_denyListAgents_comment": "Optional, default \"true\": spawn and recovery add a ListAgents deny to each worktree's .claude/settings.local.json, so agents address peers by computed name only. Set \"false\" only where user-level settings already deny it.",
-  "denyListAgents": "true",
+  "_listAgents_comment": "Optional, \"ask\" (default) or \"deny\": what the peer-scope hook (bin/claude-hooks/peer-scope.sh) does with ListAgents, the account-wide session listing that shows every project. Agents address their own project's peers by computed name, so they never need it.",
+  "listAgents": "ask",
 
-  "_visibility_comment": "Optional: \"public\" or \"private\". Decides isolation per repo (docs/cross-worktree-messages.md § Project isolation). If absent, the harness asks `gh repo view`; if that can't tell, it treats the repo as private (fail closed). A private repo gets opaque session names (p-<hash>) and must check in its guard (bin/project-guard; docs/private-projects.md).",
+  "_opaqueNames_comment": "Optional, default false: true names sessions, Remote Control labels, tmux and terminal titles p-<hash> instead of <prefix><branch>. Projects are kept apart by scoped messaging, not by names, so leave this off unless the names themselves must not be seen.",
+  "opaqueNames": false,
+
+  "_visibility_comment": "Optional: \"public\" or \"private\". Decides isolation per repo (docs/cross-worktree-messages.md § Project isolation). If absent, the harness asks `gh repo view`; if that can't tell, it treats the repo as private (fail closed). A private repo must check in its guard (bin/project-guard; docs/private-projects.md).",
   "visibility": "public",
 
   "_privateInbound_comment": "Optional, \"accept\" (default), \"hold\" or \"refuse\": how guarded sessions (private repo, or sensitive machine) treat inbound cross-session messages. The guard gates outgoing sends, so inbound is normally accepted; with Claude Code it is set at launch (--settings), the only scope where accept applies.",

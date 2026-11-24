@@ -48,7 +48,7 @@ genuinely Claude-Code-specific mechanisms are labelled where they appear.
   receiving, and the polling cadence.
 
 - **[private-projects.md](private-projects.md)** — setting up a private project:
-  visibility, the checked-in guard, opaque session names, and sensitive machines.
+  visibility, the checked-in guard, scoped messaging, and sensitive machines.
 
 ## Machine operations
 

@@ -30,50 +30,56 @@ clone on every machine has it. If your `.gitignore` excludes `.claude/`, un-igno
 `.claude/settings.json` (for example `!.claude/settings.json`), while keeping
 `.claude/settings.local.json` ignored.
 
-**What it contains (Claude Code):** `permissions.ask: ["SendMessage"]`, so every outgoing message
-needs a human's approval, even to a session on the same machine (another private repo's
-included); `isolatePeerMachines: true`; and a `ListAgents` deny. Bypass mode honors the `ask` rule,
-and a "don't ask again" answer at the prompt doesn't override it, so the guard doesn't disable
-bypass mode (the trade-off is in
-[Project isolation § With Claude Code](cross-worktree-messages.md#with-claude-code)).
+**What it contains (Claude Code):** the peer-scope hook (`bin/claude-hooks/peer-scope.sh`, a
+PreToolUse hook on `SendMessage` and `ListAgents`) and `isolatePeerMachines: true`:
+
+| | Within the project | Outside the project |
+|---|---|---|
+| **Send** (`SendMessage`) | allowed, no prompt | asks the human (not blocked) |
+| **Discover** (list sessions) | the project's own names are computed, no prompt | `ListAgents` asks the human |
+
+The hook recognizes the project's own sessions by computing their names (every worktree, by folder
+and by branch, plus `stagingPeers`); it never lists sessions to find them. `isolatePeerMachines`
+also asks for every send to another machine. An `ask` rule for `SendMessage` would outrank the
+hook's `allow`, so the guard has none: `--check` reports one left by an earlier guard as stale, and
+`--write` removes it (and the old `ListAgents` deny; set `listAgents` to `"deny"` to keep listing
+denied outright).
 Incoming messages never need approval: protection rests on the sending side. Spawn and recovery
 launch guarded sessions with `--settings '{"crossSessionInbound":"accept"}'`, because project
 settings can make inbound stricter but not looser. If the project wants inbound held or refused
 anyway, set `privateInbound` to `"hold"` or `"refuse"`, and `--write` checks that in too.
-Until the guard lands, spawn and recovery print a warning for every worktree and guard each one
-with local settings, but clones elsewhere stay unguarded. A guard written before this change
-carries `crossSessionInbound: "hold"` and no `ask` rule: rerun `project-guard --write` and commit.
+Until the guard lands, spawn and recovery print a warning for every worktree and write the same
+settings locally, but clones elsewhere stay unguarded.
 
-## 3. Expect opaque names everywhere outside the project
+## 3. Names stay readable
 
-The project's name, branch names and issue titles are confidential: the harness never emits them
-outside the project's own worktrees. So sessions are named `p-<hash>` instead of
-`<prefix><branch>`, and so are Remote Control labels, tmux session, window and pane titles,
-terminal titles (`claude-remote`, `term-style.sh`), and doorbells. The names are deterministic:
-`<agents>/bin/session-name <branch>` prints any branch's name, `session-name --resolve <name>`
-maps one back, and spawn, recovery and `bin/doorbell` compute them the same way. Attention
-markers go to `<worktrees>/.claude-attention/`, not the machine-wide `~/.cache/claude-attention/`.
-Inside the worktrees (branches, plan docs, inbox filenames) real names are fine.
+Session, tmux and Remote Control names are `<prefix><branch>` (staging adds `-<host>`) in a private
+project as in a public one. Projects are kept apart by scoping what an agent can reach and list,
+not by hiding names: hashed names made `tmux ls` and terminal tabs unreadable to the person running
+the fleet while the names stayed visible account-wide anyway. A project that still wants them can
+set `"opaqueNames": true`, which names sessions, Remote Control labels, tmux and terminal titles
+`p-<hash>` and makes the doorbell name nothing but the opaque sender and a file timestamp.
+`<agents>/bin/session-name <branch>` prints any branch's name either way, and
+`session-name --resolve <name>` maps one back to its worktree folder. Attention markers go to
+`<worktrees>/.claude-attention/`, not the machine-wide `~/.cache/claude-attention/`.
 
-Write issue titles, commit messages and branch names knowing that they stay inside the repo,
-and keep them out of anything you post elsewhere.
+Issue titles, commit messages and branch names stay inside the repo; keep them out of anything you
+post elsewhere.
 
-## 4. Doorbells are native, and each one asks
+## 4. Doorbells are native
 
-With inbound accepted, `bin/doorbell` rings natively (`SendMessage`), as in a public project, and
-each ring is a send that prompts the human. If the human declines it, the agent doesn't ring tmux
-instead: a declined send is a decision. tmux remains the fallback for a send that failed, was held
-or was refused, and for script senders. The doorbell names the sender by its opaque name and the
-file by its timestamp only: `From p-<hash>: new message <timestamp>* in your inbox`. The file
-protocol is unchanged.
+`bin/doorbell` rings natively (`SendMessage`), as in a public project. A ring to one of the
+project's own sessions goes through without a prompt. If a send asks and the human declines it, the
+agent doesn't ring tmux instead: a declined send is a decision. tmux remains the fallback for a
+send that failed, was held or was refused, and for script senders. The file protocol is unchanged.
 
 ## 5. Cross-machine staging needs approval per send
 
 If the project runs staging on more than one machine, list each one's name in `stagingPeers`:
-`<agents>/bin/session-name staging` run on that machine prints it. Those sends are allowed (same
-project), but each one needs a human's approval, like every send from a private repo. The
-receiving staging session takes them without a prompt. If that is too slow, coordinate across
-machines through another channel (for example the repository itself).
+`<agents>/bin/session-name staging` run on that machine prints it. The hook counts those as the
+project's own sessions, and `isolatePeerMachines` still asks the human for each send to another
+machine. The receiving staging session takes them without a prompt. If that is too slow,
+coordinate across machines through another channel (for example the repository itself).
 
 ## 6. On a sensitive machine, add the machine-local layer
 
@@ -95,6 +101,10 @@ The settings guard sessions started inside the repo; a session launched by hand 
 covered, and one launched by hand inside it lacks the launch-time inbound `accept`, so messages from
 a session in another permission mode are held for it. An agent in bypass mode can edit its own
 settings files, the guard included. The tmux fallback is a shell command, not a message the
-runner gates. Session names stay visible account-wide; opaque names only make them say less. And
-messaging is one channel: `git push`, `gh` and web requests are others. For a machine shared with
+runner gates. Claude Code documents that a hook's `ask` prompts in the default and auto modes; it
+doesn't say so for bypass mode, so a bypass-permissions fleet should verify that sends outside the
+project still prompt. The recipient field of `SendMessage` isn't documented either: the hook reads
+`to` (or `recipient`, `target`) and asks when it finds none. It lets an in-session subagent through
+by its id shape (`a` and 16 hex digits), since continuing a subagent also uses `SendMessage`.
+Session names stay visible account-wide, readable or opaque. And messaging is one channel: `git push`, `gh` and web requests are others. For a machine shared with
 other people's or other projects' work, a separate account is the strongest separation.
