@@ -161,8 +161,8 @@ for c in "${candidates[@]}"; do
   launched+=("$session ($model)")
   tmux new-session -d -s "$session" -c "$wt_path"
   tmux set-window-option -t "=$session:" automatic-rename off 2>/dev/null || true
-  # A private project's window title is its opaque session name (titles leave the project).
-  if [ "${HA_PRIVATE:-true}" = true ]; then title="$session"; else title="$wt"; fi
+  # With opaque names, the window title is the opaque session name too.
+  if [ "${HA_OPAQUE_NAMES:-false}" = true ]; then title="$session"; else title="$wt"; fi
   tmux rename-window -t "=$session:" "$title" 2>/dev/null || true
   # The runner adapter names the session after its tmux session, so the agent
   # keeps its pre-crash messaging address, and resumes its prior conversation.

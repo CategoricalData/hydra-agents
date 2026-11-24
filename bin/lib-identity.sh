@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # lib-identity.sh — what a worktree may show about itself outside the project.
 #
-# For a private project, its name, branch names and issue titles are confidential:
-# the harness never emits them outside the project's own worktrees (hydra-agents#7,
-# docs/cross-worktree-messages.md § Project isolation). This library is for the
-# places that do reach outside — terminal and tmux titles, attention markers in a
-# machine-wide directory — and is cheap enough for hooks: it reads the project's
-# config files only (no gh, no network). A project counts as public only when its
-# config says so ("visibility": "public", in hydra-agents.json or the machine-local
-# hydra-agents.local.json); anything else is treated as private (fail closed).
+# Names are readable by default: projects are kept apart by scoping sends and
+# listings (bin/claude-hooks/peer-scope.sh), not by hiding names. A project that
+# sets "opaqueNames": true shows its opaque session name (p-<hash>) in terminal and
+# tmux titles and the Remote Control label instead. Attention markers of a private
+# project stay in a project-local directory. This library is cheap enough for
+# hooks: it reads the project's config files only (no gh, no network). A project
+# counts as public only when its config says so ("visibility": "public", in
+# hydra-agents.json or the machine-local hydra-agents.local.json); anything else is
+# treated as private (fail closed).
 #
 # Usage:
 #   . "<agents>/bin/lib-identity.sh"
@@ -16,13 +17,14 @@
 #   ha_attention_dir <worktree-root>      # where this worktree's attention markers go
 #   ha_display_name <worktree-root>       # a title safe to show outside the project
 #
-# HA_ID_PUBLIC "true"/"false"; HA_ID_CONFIG the config path ("" if none).
+# HA_ID_PUBLIC "true"/"false"; HA_ID_OPAQUE "true" only with "opaqueNames": true;
+# HA_ID_CONFIG the config path ("" if none).
 
 _HA_ID_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ha_identity_load() {
-    local root="$1" dir local_cfg vis
-    HA_ID_CONFIG="" HA_ID_PUBLIC=false
+    local root="$1" dir local_cfg vis opq
+    HA_ID_CONFIG="" HA_ID_PUBLIC=false HA_ID_OPAQUE=false
     dir="$(cd "$root" 2>/dev/null && pwd)" || return 1
     while [ -n "$dir" ] && [ "$dir" != "/" ]; do
         [ -f "$dir/hydra-agents.json" ] && { HA_ID_CONFIG="$dir/hydra-agents.json"; break; }
@@ -34,6 +36,9 @@ ha_identity_load() {
     vis="$(jq -r '.visibility // empty' "$local_cfg" 2>/dev/null || true)"
     [ -n "$vis" ] || vis="$(jq -r '.visibility // empty' "$HA_ID_CONFIG" 2>/dev/null || true)"
     [ "$vis" = public ] && HA_ID_PUBLIC=true
+    opq="$(jq -r '.opaqueNames // empty' "$local_cfg" 2>/dev/null || true)"
+    [ -n "$opq" ] || opq="$(jq -r '.opaqueNames // empty' "$HA_ID_CONFIG" 2>/dev/null || true)"
+    [ "$opq" = true ] && HA_ID_OPAQUE=true
     return 0
 }
 
@@ -49,14 +54,13 @@ ha_attention_dir() {
     fi
 }
 
-# ha_display_name <worktree-root>: the branch for a public project (or outside any
-# harness project); for a private one, its opaque session name (p-<hash>, the
-# same name spawn gives the tmux session and the agent).
+# ha_display_name <worktree-root>: the branch; with "opaqueNames": true, the opaque
+# session name (p-<hash>, the same name spawn gives the tmux session and the agent).
 ha_display_name() {
     local root="$1" branch
     branch="$(git -C "$root" branch --show-current 2>/dev/null)"
     [ -n "$branch" ] || branch="$(basename "$root")"
-    if ! ha_identity_load "$root" || [ "$HA_ID_PUBLIC" = true ]; then
+    if ! ha_identity_load "$root" || [ "$HA_ID_OPAQUE" != true ]; then
         printf '%s' "$branch"
         return 0
     fi
@@ -68,7 +72,7 @@ ha_display_name() {
         [ -n "$HA_SESSION_PREFIX" ] || HA_SESSION_PREFIX="${HA_ISSUE_REPO##*/}-"
         HA_STANDARDIZED_BRANCHES="$(jq -r '.standardizedBranches // "staging"' "$HA_ID_CONFIG" 2>/dev/null)"
         HA_MACHINE="$(hostname -s 2>/dev/null || echo unknown)"
-        HA_PRIVATE=true
+        HA_OPAQUE_NAMES=true
         ha_session_name_for "$branch"
     ) || printf 'agent'
 }

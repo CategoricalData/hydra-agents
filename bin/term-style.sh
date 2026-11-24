@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code terminal styling for SSH+tmux+iTerm2 (GCE remote).
-# Title -> git branch, or a private project's opaque name (relayed to iTerm2 tab via `set-titles on`); tab tint by
+# Title -> git branch, or the opaque name with opaqueNames (relayed to iTerm2 tab via `set-titles on`); tab tint by
 # state via OSC-6 + window bg via OSC Ph, both wrapped in tmux passthrough
 # (`allow-passthrough on`).
 #   Usage: term-style.sh <running|idle|done>
@@ -31,9 +31,8 @@ fi
 [ -z "$tty" ] && tty="${CLAUDE_TTY:-/dev/tty}"
 
 # --- Bare branch label for $PWD -----------------------------------------
-# A private project's title is its opaque session name: pane and terminal titles
-# leave the project (tmux lists them; iTerm2 shows them), so they must not carry
-# its branch (bin/lib-identity.sh).
+# With "opaqueNames": true the title is the opaque session name instead of the
+# branch (bin/lib-identity.sh).
 case "$PWD" in
   */worktrees/*) branch=$(echo "$PWD" | sed -E 's#.*/worktrees/([^/]+).*#\1#') ;;
   */wiki|*/wiki/*) branch="wiki" ;;
@@ -41,7 +40,7 @@ case "$PWD" in
     branch=$(git -C "$PWD" branch --show-current 2>/dev/null)
     [ -z "$branch" ] && branch=$(basename "$PWD") ;;
 esac
-if ha_identity_load "$_wt_root" && [ "$HA_ID_PUBLIC" != true ]; then
+if ha_identity_load "$_wt_root" && [ "$HA_ID_OPAQUE" = true ]; then
   branch="$(ha_display_name "$_wt_root")"
 fi
 
