@@ -8,7 +8,10 @@
 # tried in the order given by the config's `doorbells` (default: the runner
 # adapter's HA_RUNNER_DOORBELLS, or HA_RUNNER_GUARDED_DOORBELLS when the project is
 # guarded, for a runner whose guarded sessions can't take its native doorbell),
-# with tmux always last as the baseline.
+# with tmux last as the baseline unless the config's `doorbells` is set: an explicit
+# list is used exactly as given, so a project can drop the tmux ping (it types into a
+# pane a human may be typing in). `doorbells: "none"` rings nothing; the inbox file
+# and the recipient's inbox hook are then the only signal.
 #
 # Backend contract: ha_doorbell_<name> <recipient-session> <recipient-branch> <text>
 #   returns 0  delivered, or (for a backend only the agent itself can perform, such
@@ -77,12 +80,13 @@ ha_ring_doorbell() {
     # backends: the same as everyone's for a runner whose guard leaves inbound open.
     if [ -n "${HA_DOORBELLS:-}" ]; then
         list="$HA_DOORBELLS"
+        [ "$list" = none ] && return 0
     elif [ "${HA_GUARDED:-false}" = true ]; then
         list="${HA_RUNNER_GUARDED_DOORBELLS:-tmux}"
     else
         list="${HA_RUNNER_DOORBELLS:-}"
     fi
-    case " $list " in *" tmux "*) ;; *) list="$list tmux" ;; esac
+    [ -n "${HA_DOORBELLS:-}" ] || case " $list " in *" tmux "*) ;; *) list="$list tmux" ;; esac
     for b in $list; do
         if [ "$fallback" = "--fallback" ] && [ "$b" = "claude-sendmessage" ]; then continue; fi
         if ! declare -F "ha_doorbell_$b" >/dev/null; then

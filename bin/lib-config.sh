@@ -51,7 +51,8 @@
 #   HA_RUNNER         the agent runner adapter (runner; default claude-code), see
 #                     bin/lib-runner.sh
 #   HA_DOORBELLS      doorbell backends to try, in order (doorbells; default: the
-#                     runner's own, then tmux), see bin/lib-doorbell.sh
+#                     runner's own, then tmux; an explicit list is used exactly, and
+#                     "none" rings nothing), see bin/lib-doorbell.sh
 #
 # Also defines ha_session_name_for <branch>: the session name for a branch.
 
