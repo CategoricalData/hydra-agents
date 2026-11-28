@@ -71,6 +71,20 @@ for peer in ${HA_STAGING_PEERS:-}; do
     [ "$to" = "$peer" ] && decide allow "$to is one of this project's staging peers."
 done
 
+# A reply addressed to a local session's socket (the `from` attribute of an incoming message,
+# e.g. uds:/run/user/1000/cc-socks/<pid>.sock) is in scope when that pid's working directory is
+# inside one of this project's worktrees. The socket name carries the session's pid.
+if [[ "$to" =~ ^uds:/run/user/[0-9]+/cc-socks/([0-9]+)\.sock$ ]]; then
+    sock_pid="${BASH_REMATCH[1]}"
+    sock_cwd="$(readlink "/proc/$sock_pid/cwd" 2>/dev/null || true)"
+    if [ -n "$sock_cwd" ]; then
+        while IFS= read -r wt; do
+            [ -n "$wt" ] || continue
+            case "$sock_cwd/" in "$wt"/*) decide allow "$to is this project's session in $wt." ;; esac
+        done < <(git -C "$HA_PROJECT_ROOT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+    fi
+fi
+
 # Every worktree of this project, by folder and by branch, from one git call.
 names="$(git -C "$HA_PROJECT_ROOT" worktree list --porcelain 2>/dev/null | awk '
     /^worktree / { sub(/^worktree /, ""); n = split($0, a, "/"); print a[n] }

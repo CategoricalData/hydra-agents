@@ -41,6 +41,13 @@ expect "own staging (machine-qualified)"        allow "$(run SendMessage "proj-s
 expect "own worktree with a [ref] suffix"        allow "$(run SendMessage "proj-feature_1 [38865b]")"
 expect "own staging with a [ref] suffix"         allow "$(run SendMessage "proj-staging-$host [2c5f78]")"
 expect "foreign name with a [ref] suffix"        ask   "$(run SendMessage "other-thing [abc123]")"
+# A reply to a local socket address is in scope iff that pid runs inside one of the worktrees.
+(cd "$TMP/worktrees/feature_1" && exec sleep 30) & inpid=$!
+(cd "$TMP" && exec sleep 30) & outpid=$!
+expect "socket of a session in a worktree"       allow "$(run SendMessage "uds:/run/user/$(id -u)/cc-socks/$inpid.sock")"
+expect "socket of a process outside worktrees"   ask   "$(run SendMessage "uds:/run/user/$(id -u)/cc-socks/$outpid.sock")"
+expect "socket of a dead pid"                    ask   "$(run SendMessage "uds:/run/user/$(id -u)/cc-socks/999999999.sock")"
+kill $inpid $outpid 2>/dev/null
 expect "listed staging peer"                    allow "$(run SendMessage proj-staging-otherhost)"
 expect "in-session subagent id"                 allow "$(run SendMessage a0123456789abcdef)"
 expect "another project's session asks"         ask   "$(run SendMessage other-staging-"$host")"
